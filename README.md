@@ -62,10 +62,9 @@ rounded up to whole boxes.
 
 ## Deploying to GitHub Pages
 
-The included workflow (`.github/workflows/deploy.yml`) publishes the repo root
-on every push to `main`. In the repository settings, set **Pages → Build and
-deployment → Source** to **GitHub Actions**. The `.nojekyll` file keeps Pages
-from mangling the static assets.
+Pages is served straight from the branch. In the repository settings, set
+**Pages → Build and deployment → Source** to **Deploy from a branch** and pick
+`main` / root. The `.nojekyll` file keeps Pages from mangling the static assets.
 
 To run locally, just open `index.html`, or serve the folder:
 
