@@ -59,7 +59,7 @@ a guillotine bin-packer that tracks, for every leftover region, which of its
 four sides are still on the tile's perimeter, so it will fit multiple strips
 and corner pieces into a single tile (e.g. all four corner cuts of a room can
 come from one tile) as long as each piece's grout-facing edges land on a
-factory edge. "Tiles required" is the full tiles plus the tiles consumed by
+factory edge. Pieces may be rotated 90° to fit a fresh tile or an offcut. "Tiles required" is the full tiles plus the tiles consumed by
 that packing, and the purchase is then rounded up to whole boxes.
 
 ## Deploying to GitHub Pages

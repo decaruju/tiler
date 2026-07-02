@@ -250,63 +250,85 @@ function packCuts(tiles, tileSize, kerf, reuse) {
     return s;
   };
 
-  // Try to place `piece` in region R. Returns { place, leftovers, waste } or null.
-  function tryPlace(R, piece) {
+  // Place a footprint (fw × fh) in region R; `rot` records whether the piece's
+  // stored shape is turned 90°. Returns { place, leftovers, waste } or null.
+  function placeFootprint(R, fw, fh, rot) {
     const gap = 1e-9;
-    const wF = isFull(piece.w), hF = isFull(piece.h);
+    const fwFull = fw >= ts - E, fhFull = fh >= ts - E;
 
-    // Edge strip: a full-length band against a factory side (laid vertically).
-    if (wF || hF) {
-      if (!(R.fT && R.fB) || R.h < ts - E) return null;   // needs full-height region
-      const c = hF ? piece.w : piece.h;                    // across-wall width
-      if (c > R.w + gap) return null;
-      const rot = !hF;                                     // rotate a full-width strip upright
-      const leftW = R.w - c - kerf;
-      if (R.fL) {
-        const leftovers = leftW > gap
-          ? [{ stock: R.stock, x: R.x + c + kerf, y: R.y, w: leftW, h: ts, fL: false, fR: R.fR, fB: true, fT: true }] : [];
-        return { place: { x: R.x, y: R.y, w: c, h: ts, rot }, leftovers, waste: (R.w - c) * ts };
-      }
-      if (R.fR) {
-        const leftovers = leftW > gap
-          ? [{ stock: R.stock, x: R.x, y: R.y, w: leftW, h: ts, fL: R.fL, fR: false, fB: true, fT: true }] : [];
-        return { place: { x: R.x + R.w - c, y: R.y, w: c, h: ts, rot }, leftovers, waste: (R.w - c) * ts };
-      }
+    // Whole tile: only a pristine full region.
+    if (fwFull && fhFull) {
+      if (R.w < ts - E || R.h < ts - E || !(R.fL && R.fR && R.fB && R.fT)) return null;
+      return { place: { x: R.x, y: R.y, w: ts, h: ts, rot }, leftovers: [], waste: 0 };
+    }
+
+    // Vertical strip: full-height band against a vertical factory side.
+    if (fhFull) {
+      if (!(R.fT && R.fB) || R.h < ts - E || fw > R.w + gap) return null;
+      const leftW = R.w - fw - kerf, waste = (R.w - fw) * ts;
+      if (R.fL) return { place: { x: R.x, y: R.y, w: fw, h: ts, rot },
+        leftovers: leftW > gap ? [{ stock: R.stock, x: R.x + fw + kerf, y: R.y, w: leftW, h: ts, fL: false, fR: R.fR, fB: true, fT: true }] : [], waste };
+      if (R.fR) return { place: { x: R.x + R.w - fw, y: R.y, w: fw, h: ts, rot },
+        leftovers: leftW > gap ? [{ stock: R.stock, x: R.x, y: R.y, w: leftW, h: ts, fL: R.fL, fR: false, fB: true, fT: true }] : [], waste };
       return null;
     }
 
-    // Corner piece: one corner of the region with two adjacent factory sides.
-    const pw = piece.w, ph = piece.h;
+    // Horizontal strip: full-width band against a horizontal factory side.
+    if (fwFull) {
+      if (!(R.fL && R.fR) || R.w < ts - E || fh > R.h + gap) return null;
+      const leftH = R.h - fh - kerf, waste = (R.h - fh) * ts;
+      if (R.fB) return { place: { x: R.x, y: R.y, w: ts, h: fh, rot },
+        leftovers: leftH > gap ? [{ stock: R.stock, x: R.x, y: R.y + fh + kerf, w: ts, h: leftH, fL: R.fL, fR: R.fR, fB: false, fT: R.fT }] : [], waste };
+      if (R.fT) return { place: { x: R.x, y: R.y + R.h - fh, w: ts, h: fh, rot },
+        leftovers: leftH > gap ? [{ stock: R.stock, x: R.x, y: R.y, w: ts, h: leftH, fL: R.fL, fR: R.fR, fB: R.fB, fT: false }] : [], waste };
+      return null;
+    }
+
+    // Corner piece: one region corner with two adjacent factory sides.
+    const pw = fw, ph = fh;
     if (pw > R.w + gap || ph > R.h + gap) return null;
     const topH = R.h - ph - kerf, sideW = R.w - pw - kerf;
     const waste = R.w * R.h - pw * ph;
-    const rowRight = () => sideW > gap;
-    const colTop = () => topH > gap;
+    const colTop = topH > gap, rowRight = sideW > gap;
     if (R.fB && R.fL) {                                    // bottom-left
       const lo = [];
-      if (colTop()) lo.push({ stock: R.stock, x: R.x, y: R.y + ph + kerf, w: R.w, h: topH, fL: R.fL, fR: R.fR, fB: false, fT: R.fT });
-      if (rowRight()) lo.push({ stock: R.stock, x: R.x + pw + kerf, y: R.y, w: sideW, h: ph, fL: false, fR: R.fR, fB: R.fB, fT: false });
-      return { place: { x: R.x, y: R.y, w: pw, h: ph, rot: false }, leftovers: lo, waste };
+      if (colTop) lo.push({ stock: R.stock, x: R.x, y: R.y + ph + kerf, w: R.w, h: topH, fL: R.fL, fR: R.fR, fB: false, fT: R.fT });
+      if (rowRight) lo.push({ stock: R.stock, x: R.x + pw + kerf, y: R.y, w: sideW, h: ph, fL: false, fR: R.fR, fB: R.fB, fT: false });
+      return { place: { x: R.x, y: R.y, w: pw, h: ph, rot }, leftovers: lo, waste };
     }
     if (R.fB && R.fR) {                                    // bottom-right
       const lo = [];
-      if (colTop()) lo.push({ stock: R.stock, x: R.x, y: R.y + ph + kerf, w: R.w, h: topH, fL: R.fL, fR: R.fR, fB: false, fT: R.fT });
-      if (rowRight()) lo.push({ stock: R.stock, x: R.x, y: R.y, w: sideW, h: ph, fL: R.fL, fR: false, fB: R.fB, fT: false });
-      return { place: { x: R.x + R.w - pw, y: R.y, w: pw, h: ph, rot: false }, leftovers: lo, waste };
+      if (colTop) lo.push({ stock: R.stock, x: R.x, y: R.y + ph + kerf, w: R.w, h: topH, fL: R.fL, fR: R.fR, fB: false, fT: R.fT });
+      if (rowRight) lo.push({ stock: R.stock, x: R.x, y: R.y, w: sideW, h: ph, fL: R.fL, fR: false, fB: R.fB, fT: false });
+      return { place: { x: R.x + R.w - pw, y: R.y, w: pw, h: ph, rot }, leftovers: lo, waste };
     }
     if (R.fT && R.fL) {                                    // top-left
       const lo = [];
-      if (colTop()) lo.push({ stock: R.stock, x: R.x, y: R.y, w: R.w, h: topH, fL: R.fL, fR: R.fR, fB: R.fB, fT: false });
-      if (rowRight()) lo.push({ stock: R.stock, x: R.x + pw + kerf, y: R.y + R.h - ph, w: sideW, h: ph, fL: false, fR: R.fR, fB: false, fT: R.fT });
-      return { place: { x: R.x, y: R.y + R.h - ph, w: pw, h: ph, rot: false }, leftovers: lo, waste };
+      if (colTop) lo.push({ stock: R.stock, x: R.x, y: R.y, w: R.w, h: topH, fL: R.fL, fR: R.fR, fB: R.fB, fT: false });
+      if (rowRight) lo.push({ stock: R.stock, x: R.x + pw + kerf, y: R.y + R.h - ph, w: sideW, h: ph, fL: false, fR: R.fR, fB: false, fT: R.fT });
+      return { place: { x: R.x, y: R.y + R.h - ph, w: pw, h: ph, rot }, leftovers: lo, waste };
     }
     if (R.fT && R.fR) {                                    // top-right
       const lo = [];
-      if (colTop()) lo.push({ stock: R.stock, x: R.x, y: R.y, w: R.w, h: topH, fL: R.fL, fR: R.fR, fB: R.fB, fT: false });
-      if (rowRight()) lo.push({ stock: R.stock, x: R.x, y: R.y + R.h - ph, w: sideW, h: ph, fL: R.fL, fR: false, fB: false, fT: R.fT });
-      return { place: { x: R.x + R.w - pw, y: R.y + R.h - ph, w: pw, h: ph, rot: false }, leftovers: lo, waste };
+      if (colTop) lo.push({ stock: R.stock, x: R.x, y: R.y, w: R.w, h: topH, fL: R.fL, fR: R.fR, fB: R.fB, fT: false });
+      if (rowRight) lo.push({ stock: R.stock, x: R.x, y: R.y + R.h - ph, w: sideW, h: ph, fL: R.fL, fR: false, fB: false, fT: R.fT });
+      return { place: { x: R.x + R.w - pw, y: R.y + R.h - ph, w: pw, h: ph, rot }, leftovers: lo, waste };
     }
     return null;
+  }
+
+  // Try both orientations (tiles can be rotated to fit an offcut); keep the
+  // tighter fit.
+  function tryPlace(R, piece) {
+    let best = null;
+    for (const rot of [false, true]) {
+      const fw = rot ? piece.h : piece.w;
+      const fh = rot ? piece.w : piece.h;
+      const res = placeFootprint(R, fw, fh, rot);
+      if (res && (!best || res.waste < best.waste)) best = res;
+      if (Math.abs(piece.w - piece.h) < 1e-12) break; // square: one orientation
+    }
+    return best;
   }
 
   // Hardest pieces first (biggest area), so small offcuts fill the gaps.
