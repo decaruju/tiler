@@ -107,6 +107,9 @@
           <label class="lbl sm" for="waste">Waste / breakage margin (%)
             <input type="number" id="waste" value="10" min="0" step="1" />
           </label>
+          <label class="lbl sm" for="price">Price per tile
+            <input type="number" id="price" value="0" min="0" step="0.01" />
+          </label>
         </section>
       </form>
       <p class="error" id="error" hidden></p>
@@ -148,6 +151,10 @@
         <div class="stat stat-buy">
           <span class="stat-label">Buy with margin</span>
           <span class="stat-value" id="stBuy">–</span>
+        </div>
+        <div class="stat stat-cost">
+          <span class="stat-label">Total cost</span>
+          <span class="stat-value" id="stCost">–</span>
         </div>
       </div>
 

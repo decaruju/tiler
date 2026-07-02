@@ -167,7 +167,7 @@ input:focus, select:focus, textarea:focus {
 /* ---- Stats ---- */
 .stats {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 12px;
 }
 .stat {
@@ -189,6 +189,7 @@ input:focus, select:focus, textarea:focus {
 .stat-primary .stat-label { color: rgba(255,255,255,.8); }
 .stat-primary .stat-value { color: #fff; font-size: 1.6rem; }
 .stat-buy .stat-value { color: var(--accent); }
+.stat-cost .stat-value { color: var(--accent); }
 
 /* ---- Cut sheet ---- */
 .cutsheet:empty { display: none; }

@@ -424,7 +424,7 @@ function fmtLen(v, unit) {
 
 const $ = id => document.getElementById(id);
 const inputs = ["units", "coords", "tileSize", "grout", "pattern", "rotation",
-  "originX", "originY", "align", "kerf", "reuse", "waste"].map($);
+  "originX", "originY", "align", "kerf", "reuse", "waste", "price"].map($);
 const errorEl = $("error");
 
 function readConfig() {
@@ -440,6 +440,7 @@ function readConfig() {
     kerf: parseFloat($("kerf").value) || 0,
     reuse: $("reuse").checked,
     waste: parseFloat($("waste").value) || 0,
+    price: parseFloat($("price").value) || 0,
   };
 }
 
@@ -447,7 +448,7 @@ function showError(msg) {
   errorEl.textContent = msg;
   errorEl.hidden = false;
   state.layout = null;
-  ["stTotal", "stFull", "stCut", "stArea", "stBuy"].forEach(id => ($(id).textContent = "–"));
+  ["stTotal", "stFull", "stCut", "stArea", "stBuy", "stCost"].forEach(id => ($(id).textContent = "–"));
   $("cutSheet").innerHTML = "";
   draw();
 }
@@ -520,6 +521,12 @@ function recompute(refit) {
     $("stArea").textContent = fmtArea(layout.area, cfg.units);
     const buy = Math.ceil(layout.total * (1 + cfg.waste / 100));
     $("stBuy").textContent = buy.toLocaleString();
+
+    // Total cost = tiles actually bought × price per tile.
+    const cost = buy * cfg.price;
+    $("stCost").textContent = cfg.price > 0
+      ? cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : "–";
 
     renderCutSheet(layout, cfg.units);
 
