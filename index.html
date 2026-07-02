@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tiler — Ceramic Tile Layout Planner</title>
+  <meta name="description" content="Plan ceramic tile layouts: enter a room outline, tile size and an origin point, and get the exact number of tiles needed plus a visual plan." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>Tiler</h1>
+        <p class="tagline">Ceramic tile layout planner</p>
+      </div>
+    </div>
+    <a class="ghlink" href="https://github.com/decaruju/tiler" target="_blank" rel="noopener">View on GitHub</a>
+  </header>
+
+  <main class="layout">
+    <!-- Controls -->
+    <aside class="panel" id="controls">
+      <form id="form" autocomplete="off">
+        <section class="field-group">
+          <div class="group-head">
+            <h2>Room</h2>
+            <select id="units" title="Units apply to every length below">
+              <option value="m">meters</option>
+              <option value="cm">centimeters</option>
+              <option value="mm">millimeters</option>
+              <option value="ft">feet</option>
+              <option value="in">inches</option>
+            </select>
+          </div>
+          <label class="lbl" for="coords">
+            Corner coordinates
+            <span class="hint">one <code>x, y</code> vertex per line, in order around the wall</span>
+          </label>
+          <textarea id="coords" rows="7" spellcheck="false">0, 0
+4, 0
+4, 2
+2.5, 2
+2.5, 3.5
+0, 3.5</textarea>
+          <p class="hint">Separate multiple rooms with a blank line.</p>
+        </section>
+
+        <section class="field-group">
+          <h2>Tiles</h2>
+          <div class="row">
+            <label class="lbl sm" for="tileSize">Tile size (square)
+              <input type="number" id="tileSize" value="0.45" min="0.001" step="0.001" />
+            </label>
+            <label class="lbl sm" for="grout">Grout / joint
+              <input type="number" id="grout" value="0.003" min="0" step="0.001" />
+            </label>
+          </div>
+          <div class="row">
+            <label class="lbl sm" for="pattern">Pattern
+              <select id="pattern">
+                <option value="0">Grid (stacked)</option>
+                <option value="0.5">Running bond ½</option>
+                <option value="0.3333333">Third bond ⅓</option>
+              </select>
+            </label>
+            <label class="lbl sm" for="rotation">Rotation (°)
+              <input type="number" id="rotation" value="0" step="1" />
+            </label>
+          </div>
+        </section>
+
+        <section class="field-group">
+          <h2>Origin</h2>
+          <p class="hint">First tile is laid from here. Drag the ✛ on the plan, or type coordinates.</p>
+          <div class="row">
+            <label class="lbl sm" for="originX">Origin X
+              <input type="number" id="originX" value="0" step="0.01" />
+            </label>
+            <label class="lbl sm" for="originY">Origin Y
+              <input type="number" id="originY" value="0" step="0.01" />
+            </label>
+          </div>
+          <label class="lbl sm" for="align">Tile alignment at origin
+            <select id="align">
+              <option value="corner">Tile corner on origin</option>
+              <option value="center">Tile centered on origin</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="field-group">
+          <h2>Purchasing</h2>
+          <label class="lbl sm" for="waste">Waste / breakage margin (%)
+            <input type="number" id="waste" value="10" min="0" step="1" />
+          </label>
+        </section>
+      </form>
+      <p class="error" id="error" hidden></p>
+    </aside>
+
+    <!-- Plan + results -->
+    <section class="stage">
+      <div class="toolbar">
+        <button type="button" id="fitBtn" class="tool">Fit view</button>
+        <button type="button" id="originBtn" class="tool" aria-pressed="false">Set origin</button>
+        <button type="button" id="shareBtn" class="tool">Share link</button>
+        <div class="legend">
+          <span class="chip"><i class="sw sw-full"></i>Full tile</span>
+          <span class="chip"><i class="sw sw-cut"></i>Cut tile</span>
+          <span class="chip"><i class="sw sw-origin"></i>Origin</span>
+        </div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="plan"></canvas>
+      </div>
+
+      <div class="stats" id="stats">
+        <div class="stat stat-primary">
+          <span class="stat-label">Tiles required</span>
+          <span class="stat-value" id="stTotal">–</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Full tiles</span>
+          <span class="stat-value" id="stFull">–</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Cut tiles</span>
+          <span class="stat-value" id="stCut">–</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Room area</span>
+          <span class="stat-value" id="stArea">–</span>
+        </div>
+        <div class="stat stat-buy">
+          <span class="stat-label">Buy with margin</span>
+          <span class="stat-value" id="stBuy">–</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
