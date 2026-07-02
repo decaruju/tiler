@@ -97,6 +97,9 @@ code { font-family: var(--mono); font-size: .9em; background: var(--surface-2); 
 
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
+.check { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .82rem; font-weight: 600; cursor: pointer; }
+.check input { width: auto; margin: 0; accent-color: var(--accent); }
+
 input, select, textarea {
   width: 100%;
   font-family: var(--sans);
@@ -186,6 +189,33 @@ input:focus, select:focus, textarea:focus {
 .stat-primary .stat-label { color: rgba(255,255,255,.8); }
 .stat-primary .stat-value { color: #fff; font-size: 1.6rem; }
 .stat-buy .stat-value { color: var(--accent); }
+
+/* ---- Cut sheet ---- */
+.cutsheet:empty { display: none; }
+.cutsheet {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 18px;
+}
+.cs-head h2 { margin: 0 0 4px; font-size: .95rem; letter-spacing: -.01em; }
+.cs-head p { margin: 0 0 12px; font-size: .8rem; color: var(--ink-soft); }
+.cs-empty { margin: 0; font-size: .85rem; color: var(--ink-soft); }
+.cs-scroll { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.cs-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.cs-table th, .cs-table td { text-align: left; padding: 7px 12px; border-bottom: 1px solid var(--line); }
+.cs-table thead th {
+  position: sticky; top: 0; background: var(--surface-2);
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft);
+}
+.cs-table tr:last-child td { border-bottom: none; }
+.cs-stock {
+  font-weight: 700; vertical-align: top; white-space: nowrap;
+  border-right: 1px solid var(--line); background: var(--surface-2);
+}
+.cs-num { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+.cs-size { font-family: var(--mono); }
 
 /* ---- Responsive ---- */
 @media (max-width: 860px) {

@@ -17,11 +17,20 @@ No build step, no dependencies — just static HTML/CSS/JS.
 2. **Tiles** — set the square tile side, the grout/joint width, the laying
    pattern (stacked grid, running ½ bond, third ⅓ bond) and an optional
    rotation angle.
-3. **Origin** — the point the first tile is laid from. Type coordinates,
+3. **Cutting** — set the saw blade width (kerf) — the material lost on each
+   cut — and choose whether to reuse offcuts. With reuse on, the leftover from
+   a cut tile is used for other cuts wherever it still fits *after* the kerf,
+   which lowers the number of tiles you actually buy.
+4. **Origin** — the point the first tile is laid from. Type coordinates,
    click **Set origin** and click on the plan, or just drag the ✛ marker.
    Choose whether a tile *corner* or *centre* sits on the origin.
-4. **Purchasing** — set a waste/breakage margin to get a recommended
+5. **Purchasing** — set a waste/breakage margin to get a recommended
    purchase quantity.
+
+Every laid tile is numbered on the plan (zoom in if they're hidden). The
+**cut sheet** below the plan lists each cut piece by number and bounding-box
+size, grouped by the physical tile it's cut from — so identical numbers on the
+plan and the sheet tell you exactly what to cut and from where.
 
 Results update live: total tiles, full vs. cut tiles, room area, and the
 quantity to buy with margin. Scroll to zoom and drag to pan the plan.
@@ -36,6 +45,11 @@ origin. Each candidate tile square is intersected with the room polygon using
 Sutherland–Hodgman clipping (valid for concave rooms because the clip window —
 the tile — is convex). A tile counts if any of its area falls inside the room;
 it's **full** when the whole square is covered and **cut** otherwise.
+
+Cut pieces are then packed into as few whole tiles as possible with a
+guillotine bin-packing heuristic (largest piece first, tightest-fit offcut,
+90° rotation allowed), reserving the saw kerf on every cut. "Tiles required"
+is the full tiles plus the tiles consumed by that packing.
 
 ## Deploying to GitHub Pages
 

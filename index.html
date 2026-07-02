@@ -72,6 +72,18 @@
         </section>
 
         <section class="field-group">
+          <h2>Cutting</h2>
+          <label class="lbl sm" for="kerf">Saw blade width (kerf)
+            <input type="number" id="kerf" value="0.003" min="0" step="0.001" />
+            <span class="hint">material lost per cut — a reused offcut must still fit after it</span>
+          </label>
+          <label class="check">
+            <input type="checkbox" id="reuse" checked />
+            <span>Reuse offcuts to minimize waste</span>
+          </label>
+        </section>
+
+        <section class="field-group">
           <h2>Origin</h2>
           <p class="hint">First tile is laid from here. Drag the ✛ on the plan, or type coordinates.</p>
           <div class="row">
@@ -126,7 +138,7 @@
           <span class="stat-value" id="stFull">–</span>
         </div>
         <div class="stat">
-          <span class="stat-label">Cut tiles</span>
+          <span class="stat-label">Cut pieces</span>
           <span class="stat-value" id="stCut">–</span>
         </div>
         <div class="stat">
@@ -138,6 +150,8 @@
           <span class="stat-value" id="stBuy">–</span>
         </div>
       </div>
+
+      <section class="cutsheet" id="cutSheet" aria-live="polite"></section>
     </section>
   </main>
 
