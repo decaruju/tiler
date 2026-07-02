@@ -40,6 +40,10 @@ to buy with margin, boxes needed and total cost. Scroll to zoom, drag to pan.
 **Share link** encodes every spec into the URL query string (and copies it to
 your clipboard) so you can send a fully pre-filled plan to someone else.
 
+**Generate cut sheet** opens a printable page (`print.html`) — the room plan,
+every per-tile cut diagram, and all the specs — with the parameters carried in
+its URL, so it recomputes from the URL and can be printed or saved to PDF.
+
 ## How the count works
 
 Tiles are generated on an axis-aligned grid in a frame rotated around the
