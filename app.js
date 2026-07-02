@@ -171,11 +171,13 @@ function computeLayout(cfg) {
       let covered = 0;
       let cxmin = Infinity, cymin = Infinity, cxmax = -Infinity, cymax = -Infinity;
       let cenX = 0, cenY = 0, cenW = 0;
+      const clips = []; // clipped piece rings, in grid space
       for (const gp of gridPolys) {
         const clipped = clipToRect(gp, rxmin, rymin, rxmax, rymax);
         if (clipped.length >= 3) {
           const a = polygonArea(clipped);
           covered += a;
+          clips.push(clipped);
           for (const p of clipped) {
             if (p.x < cxmin) cxmin = p.x; if (p.x > cxmax) cxmax = p.x;
             if (p.y < cymin) cymin = p.y; if (p.y > cymax) cymax = p.y;
@@ -202,7 +204,11 @@ function computeLayout(cfg) {
       const label = rotate(gLabel, originX, originY, icos, isin);
 
       const tile = { corners, cut: isCut, label };
-      if (isCut) { tile.w = cxmax - cxmin; tile.h = cymax - cymin; }
+      if (isCut) {
+        tile.w = cxmax - cxmin; tile.h = cymax - cymin;
+        // Real piece outline(s), relative to the piece's own bounding box.
+        tile.shape = clips.map(ring => ring.map(p => ({ x: p.x - cxmin, y: p.y - cymin })));
+      }
       tiles.push(tile);
     }
   }
@@ -216,61 +222,70 @@ function computeLayout(cfg) {
   return { tiles, full, cut, area, tileSize };
 }
 
-/* ---- Offcut reuse (guillotine bin packing with saw kerf) ----------------- */
+/* ---- Offcut reuse (edge-constrained) ------------------------------------- */
+//
+// Physical constraint: a tile's factory edges must sit on the grout line and
+// every *cut* edge must go against a wall. So a reused piece has to keep the
+// original tile's outer edge on all of its grout-facing sides. The only always
+// safe reuse is therefore two full-length edge strips from a single tile: one
+// keeps the tile's left edge, the other its right edge, cut edges facing the
+// walls, waste (if any) in the middle. A corner/irregular piece (both sides
+// shorter than a tile) can't be paired safely — it takes its own tile.
 
-const MAX_PACK = 4000; // above this, skip reuse to keep it snappy
+// Does a dimension span the full tile side (a factory-to-factory length)?
+const isFullLen = (d, tileSize) => d >= tileSize - Math.max(1e-9, tileSize * 1e-4);
 
-// Pack every cut piece (by its bounding-box w×h) into as few full tiles as
-// possible. Each placement reserves the piece plus a saw kerf, and the two
-// leftover strips become reusable offcuts (guillotine cuts). Mutates each cut
-// tile with `.stock` (1-based source-tile number). Returns { stocks }.
+// Lay a strip vertically against a stock tile edge at x=`atX`. Rotates a
+// full-width strip 90° so its factory length runs top-to-bottom.
+function placeStrip(stock, piece, atX, tileSize) {
+  const vertical = isFullLen(piece.h, tileSize); // already full-height
+  const cutW = vertical ? piece.w : piece.h;
+  piece.stock = stock.id;
+  piece.place = { x: atX, y: 0, w: cutW, h: tileSize, rot: !vertical };
+  stock.pieces.push(piece);
+}
+
 function packCuts(tiles, tileSize, kerf, reuse) {
   const cuts = tiles.filter(t => t.cut);
-  const stocks = [];        // { id, pieces: [tile] }
-  const free = [];          // { stock, w, h } reusable offcuts
-  const E = 1e-9;
-  const canReuse = reuse && cuts.length <= MAX_PACK;
+  const stocks = [];
+  const newStock = () => { const s = { id: stocks.length + 1, tileSize, pieces: [] }; stocks.push(s); return s; };
 
-  // Largest pieces first — they are the hardest to place.
-  const order = [...cuts].sort((a, b) =>
-    Math.max(b.w, b.h) - Math.max(a.w, a.h) || (b.w * b.h) - (a.w * a.h));
-
-  for (const piece of order) {
-    let best = null;
-    if (canReuse) {
-      for (const fr of free) {
-        for (const rot of [false, true]) {
-          const pw = rot ? piece.h : piece.w;
-          const ph = rot ? piece.w : piece.h;
-          if (pw <= fr.w + E && ph <= fr.h + E) {
-            const slack = (fr.w - pw) + (fr.h - ph); // best (tightest) fit
-            if (!best || slack < best.slack) best = { fr, pw, ph, slack };
-          }
-        }
-      }
-    }
-
-    let stockId, ox, oy, ow, oh;
-    if (best) {
-      const { fr, pw, ph } = best;
-      stockId = fr.stock; ow = fr.w; oh = fr.h; ox = pw; oy = ph;
-      free.splice(free.indexOf(fr), 1);
+  const strips = [], solo = [];
+  for (const p of cuts) {
+    const wFull = isFullLen(p.w, tileSize), hFull = isFullLen(p.h, tileSize);
+    // A pairable strip spans the full tile in exactly one direction.
+    if (reuse && (wFull !== hFull)) {
+      p._cutW = hFull ? p.w : p.h; // across-wall width
+      strips.push(p);
     } else {
-      const s = { id: stocks.length + 1, pieces: [] };
-      stocks.push(s);
-      stockId = s.id; ow = tileSize; oh = tileSize; ox = piece.w; oy = piece.h;
+      solo.push(p);
     }
+  }
 
-    // Guillotine split: right strip (full height) + top strip (piece width).
-    if (canReuse) {
-      const rightW = ow - ox - kerf;
-      const topH = oh - oy - kerf;
-      if (rightW > E) free.push({ stock: stockId, w: rightW, h: oh });
-      if (topH > E) free.push({ stock: stockId, w: ox, h: topH });
+  // Pair strips to minimize tiles: sort by width, greedily match the widest
+  // with the narrowest that still fits beside it (optimal for 2-per-tile).
+  strips.sort((a, b) => a._cutW - b._cutW);
+  let i = 0, j = strips.length - 1;
+  const eps = tileSize * 1e-9;
+  while (i <= j) {
+    const s = newStock();
+    if (i < j && strips[i]._cutW + strips[j]._cutW + kerf <= tileSize + eps) {
+      placeStrip(s, strips[j], 0, tileSize);                                   // left edge
+      placeStrip(s, strips[i], tileSize - strips[i]._cutW, tileSize);          // right edge
+      i++; j--;
+    } else {
+      placeStrip(s, strips[j], 0, tileSize);
+      j--;
     }
+  }
 
-    piece.stock = stockId;
-    stocks[stockId - 1].pieces.push(piece);
+  // Corner / irregular pieces: one tile each, placed in a corner (which keeps
+  // its two factory edges on the grout-facing sides).
+  for (const p of solo) {
+    const s = newStock();
+    p.stock = s.id;
+    p.place = { x: 0, y: 0, w: p.w, h: p.h, rot: false };
+    s.pieces.push(p);
   }
   return { stocks };
 }
@@ -424,7 +439,7 @@ function fmtLen(v, unit) {
 
 const $ = id => document.getElementById(id);
 const inputs = ["units", "coords", "tileSize", "grout", "pattern", "rotation",
-  "originX", "originY", "align", "kerf", "reuse", "waste", "price"].map($);
+  "originX", "originY", "align", "kerf", "reuse", "waste", "box", "price"].map($);
 const errorEl = $("error");
 
 function readConfig() {
@@ -440,6 +455,7 @@ function readConfig() {
     kerf: parseFloat($("kerf").value) || 0,
     reuse: $("reuse").checked,
     waste: parseFloat($("waste").value) || 0,
+    box: Math.max(1, Math.floor(parseFloat($("box").value) || 1)),
     price: parseFloat($("price").value) || 0,
   };
 }
@@ -448,7 +464,7 @@ function showError(msg) {
   errorEl.textContent = msg;
   errorEl.hidden = false;
   state.layout = null;
-  ["stTotal", "stFull", "stCut", "stArea", "stBuy", "stCost"].forEach(id => ($(id).textContent = "–"));
+  ["stTotal", "stFull", "stCut", "stArea", "stBuy", "stBoxes", "stCost"].forEach(id => ($(id).textContent = "–"));
   $("cutSheet").innerHTML = "";
   draw();
 }
@@ -475,7 +491,7 @@ function renderCutSheet(layout, unit) {
         ? `<td class="cs-stock" rowspan="${pieces.length}">Tile ${s.id}</td>`
         : "";
       rows += `<tr>${stockCell}` +
-        `<td class="cs-num">#${p.num}</td>` +
+        `<td class="cs-num"><button type="button" class="cs-link" data-stock="${s.id}" data-num="${p.num}">#${p.num}</button></td>` +
         `<td class="cs-size">${fmtLen(p.w, unit)} &times; ${fmtLen(p.h, unit)}</td></tr>`;
     });
   }
@@ -513,6 +529,7 @@ function recompute(refit) {
     state.polygons = polygons;
     state.layout = layout;
     state.origin = { x: cfg.originX, y: cfg.originY };
+    state.units = cfg.units;
     errorEl.hidden = true;
 
     $("stTotal").textContent = layout.total.toLocaleString();
@@ -522,8 +539,15 @@ function recompute(refit) {
     const buy = Math.ceil(layout.total * (1 + cfg.waste / 100));
     $("stBuy").textContent = buy.toLocaleString();
 
-    // Total cost = tiles actually bought × price per tile.
-    const cost = buy * cfg.price;
+    // Tiles are sold in boxes — round the purchase up to whole boxes.
+    const boxes = Math.ceil(buy / cfg.box);
+    const tilesBought = boxes * cfg.box;
+    $("stBoxes").textContent = cfg.box > 1
+      ? `${boxes.toLocaleString()} (${tilesBought.toLocaleString()})`
+      : boxes.toLocaleString();
+
+    // Total cost = tiles actually bought (whole boxes) × price per tile.
+    const cost = tilesBought * cfg.price;
     $("stCost").textContent = cfg.price > 0
       ? cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       : "–";
@@ -558,10 +582,35 @@ originBtn.addEventListener("click", () => {
 /* Canvas interaction: drag origin (in set mode or by grabbing ✛), pan, zoom */
 let dragging = null; // 'origin' | 'pan'
 let last = { x: 0, y: 0 };
+let downAt = { x: 0, y: 0 }, moved = false;
 
 function nearOrigin(sx, sy) {
   const s = toScreen(state.origin);
   return Math.hypot(sx - s.x, sy - s.y) < 14;
+}
+
+// Point-in-polygon (ray casting) on a tile's world-space square.
+function pointInPoly(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.y > pt.y) !== (b.y > pt.y) &&
+        pt.x < ((b.x - a.x) * (pt.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+function tileAt(sx, sy) {
+  if (!state.layout) return null;
+  const w = toWorld(sx, sy);
+  for (const t of state.layout.tiles) if (pointInPoly(w, t.corners)) return t;
+  return null;
+}
+
+// A tap (not a drag) on a cut tile opens its stock-tile modal.
+function handleTap(sx, sy) {
+  const t = tileAt(sx, sy);
+  if (t && t.cut) openTileModal(t.stock, t.num);
 }
 
 function setOriginFromScreen(sx, sy) {
@@ -583,13 +632,23 @@ canvas.addEventListener("pointerdown", e => {
     canvas.classList.add("panning");
   }
   last = { x: sx, y: sy };
+  downAt = { x: sx, y: sy };
+  moved = false;
   canvas.setPointerCapture(e.pointerId);
 });
 
 canvas.addEventListener("pointermove", e => {
-  if (!dragging) return;
   const r = canvas.getBoundingClientRect();
   const sx = e.clientX - r.left, sy = e.clientY - r.top;
+  if (!dragging) {
+    // Hover feedback: pointer cursor over a cut tile.
+    if (!settingOrigin) {
+      const t = tileAt(sx, sy);
+      canvas.classList.toggle("hot", !!(t && t.cut));
+    }
+    return;
+  }
+  if (Math.hypot(sx - downAt.x, sy - downAt.y) > 4) moved = true;
   if (dragging === "origin") {
     setOriginFromScreen(sx, sy);
   } else {
@@ -600,7 +659,11 @@ canvas.addEventListener("pointermove", e => {
   last = { x: sx, y: sy };
 });
 
-function endDrag() {
+function endDrag(e) {
+  if (dragging === "pan" && !moved && e) {
+    const r = canvas.getBoundingClientRect();
+    handleTap(e.clientX - r.left, e.clientY - r.top);
+  }
   if (dragging === "origin" && settingOrigin) {
     settingOrigin = false;
     originBtn.setAttribute("aria-pressed", "false");
@@ -626,6 +689,115 @@ canvas.addEventListener("wheel", e => {
 }, { passive: false });
 
 window.addEventListener("resize", () => { resizeCanvas(); draw(); });
+
+/* ---- Stock-tile modal ---------------------------------------------------- */
+
+const modal = $("tileModal");
+const tileCtx = $("tileCanvas").getContext("2d");
+
+// Draw one physical stock tile with every piece cut from it nested in place.
+function drawStockTile(stock, unit, highlightNum) {
+  const cvs = $("tileCanvas");
+  const dpr = window.devicePixelRatio || 1;
+  const size = 380;
+  cvs.width = size * dpr; cvs.height = size * dpr;
+  cvs.style.width = cvs.style.height = size + "px";
+  tileCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  tileCtx.clearRect(0, 0, size, size);
+
+  const pad = 26;
+  const ts = stock.tileSize;
+  const scale = (size - pad * 2) / ts;
+  // Grid (y-up) -> canvas. tileX/tileY in [0, ts].
+  const cx = tx => pad + tx * scale;
+  const cy = ty => size - pad - ty * scale;
+
+  // Stock tile body = waste/uncut background.
+  tileCtx.fillStyle = css("--tile-full");
+  tileCtx.strokeStyle = css("--ink");
+  tileCtx.lineWidth = 2;
+  tileCtx.beginPath();
+  tileCtx.rect(cx(0), cy(ts), ts * scale, ts * scale);
+  tileCtx.fill();
+  tileCtx.stroke();
+
+  // Map a piece-local point (relative to its bbox) into stock-tile coords,
+  // honouring a 90° rotation when the piece was turned to fit.
+  const place = p => p.place;
+  const mapPt = (piece, q) => {
+    const pl = piece.place;
+    const nx = pl.rot ? q.y : q.x;
+    const ny = pl.rot ? (piece.w - q.x) : q.y;
+    return { x: pl.x + nx, y: pl.y + ny };
+  };
+
+  const cut = css("--cut");
+  for (const piece of stock.pieces) {
+    const pl = place(piece);
+    const hot = piece.num === highlightNum;
+    tileCtx.fillStyle = hot ? css("--accent") : cut;
+    tileCtx.strokeStyle = "rgba(255,255,255,.85)";
+    tileCtx.lineWidth = 1.5;
+    for (const ring of (piece.shape || [[]])) {
+      tileCtx.beginPath();
+      ring.forEach((q, i) => {
+        const m = mapPt(piece, q);
+        const X = cx(m.x), Y = cy(m.y);
+        i === 0 ? tileCtx.moveTo(X, Y) : tileCtx.lineTo(X, Y);
+      });
+      tileCtx.closePath();
+      tileCtx.fill();
+      tileCtx.stroke();
+    }
+    // Piece number at the placement-rect centre.
+    const mid = { x: pl.x + pl.w / 2, y: pl.y + pl.h / 2 };
+    tileCtx.fillStyle = "#fff";
+    tileCtx.font = "600 13px " + (css("--mono") || "monospace");
+    tileCtx.textAlign = "center";
+    tileCtx.textBaseline = "middle";
+    tileCtx.fillText("#" + piece.num, cx(mid.x), cy(mid.y));
+  }
+
+  // Tile size caption.
+  tileCtx.fillStyle = css("--ink-soft");
+  tileCtx.font = "11px " + (css("--sans") || "sans-serif");
+  tileCtx.textAlign = "center";
+  tileCtx.textBaseline = "top";
+  tileCtx.fillText(`${fmtLen(ts, unit)} × ${fmtLen(ts, unit)} tile`, size / 2, cy(0) + 6);
+}
+
+function openTileModal(stockId, highlightNum) {
+  const layout = state.layout;
+  if (!layout || !layout.stocks) return;
+  const stock = layout.stocks[stockId - 1];
+  if (!stock) return;
+  const unit = state.units;
+
+  $("modalTitle").textContent =
+    `Tile ${stock.id} — ${stock.pieces.length} piece${stock.pieces.length === 1 ? "" : "s"}`;
+
+  const pieces = [...stock.pieces].sort((a, b) => a.num - b.num);
+  $("modalPieces").innerHTML = pieces.map(p => {
+    const hot = p.num === highlightNum ? " class=\"hot\"" : "";
+    return `<li${hot}><span class="mp-num">#${p.num}</span>` +
+      `<span class="mp-size">${fmtLen(p.w, unit)} × ${fmtLen(p.h, unit)}</span></li>`;
+  }).join("");
+
+  drawStockTile(stock, unit, highlightNum);
+  if (!modal.open) modal.showModal();
+}
+
+// Cut-sheet piece numbers open the same modal.
+$("cutSheet").addEventListener("click", e => {
+  const link = e.target.closest(".cs-link");
+  if (link) openTileModal(+link.dataset.stock, +link.dataset.num);
+});
+
+$("modalClose").addEventListener("click", () => modal.close());
+// Click on the backdrop (outside the dialog content) closes it.
+modal.addEventListener("click", e => {
+  if (e.target === modal) modal.close();
+});
 
 /* ---- Shareable links ----------------------------------------------------- */
 // Every input is persisted by its element id, so the query string is a

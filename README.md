@@ -18,22 +18,24 @@ No build step, no dependencies — just static HTML/CSS/JS.
    pattern (stacked grid, running ½ bond, third ⅓ bond) and an optional
    rotation angle.
 3. **Cutting** — set the saw blade width (kerf) — the material lost on each
-   cut — and choose whether to reuse offcuts. With reuse on, the leftover from
-   a cut tile is used for other cuts wherever it still fits *after* the kerf,
-   which lowers the number of tiles you actually buy.
+   cut — and choose whether to reuse offcuts. With reuse on, one tile is used
+   for two edge cuts wherever they fit side by side (see below), lowering the
+   number of tiles you actually buy.
 4. **Origin** — the point the first tile is laid from. Type coordinates,
    click **Set origin** and click on the plan, or just drag the ✛ marker.
    Choose whether a tile *corner* or *centre* sits on the origin.
-5. **Purchasing** — set a waste/breakage margin to get a recommended
-   purchase quantity.
+5. **Purchasing** — set a waste/breakage margin, the number of **tiles per
+   box** (tiles are sold in packs, so the purchase rounds up to whole boxes),
+   and a price per tile to get boxes needed and total cost.
 
 Every laid tile is numbered on the plan (zoom in if they're hidden). The
 **cut sheet** below the plan lists each cut piece by number and bounding-box
-size, grouped by the physical tile it's cut from — so identical numbers on the
-plan and the sheet tell you exactly what to cut and from where.
+size, grouped by the physical tile it's cut from. **Click any cut tile on the
+plan** (or a number in the cut sheet) to open a diagram of that whole tile with
+every piece nested in place, showing the cuts and the leftover waste.
 
-Results update live: total tiles, full vs. cut tiles, room area, and the
-quantity to buy with margin. Scroll to zoom and drag to pan the plan.
+Results update live: tiles required, full vs. cut counts, room area, quantity
+to buy with margin, boxes needed and total cost. Scroll to zoom, drag to pan.
 
 **Share link** encodes every spec into the URL query string (and copies it to
 your clipboard) so you can send a fully pre-filled plan to someone else.
@@ -46,10 +48,17 @@ Sutherland–Hodgman clipping (valid for concave rooms because the clip window �
 the tile — is convex). A tile counts if any of its area falls inside the room;
 it's **full** when the whole square is covered and **cut** otherwise.
 
-Cut pieces are then packed into as few whole tiles as possible with a
-guillotine bin-packing heuristic (largest piece first, tightest-fit offcut,
-90° rotation allowed), reserving the saw kerf on every cut. "Tiles required"
-is the full tiles plus the tiles consumed by that packing.
+Cut pieces are then packed into as few whole tiles as possible, subject to a
+real-world constraint: a tile's factory edges must sit on the grout line and
+every *cut* edge must go against a wall. So a reused piece has to keep the
+original tile's outer edge on all of its grout-facing sides. The only always
+safe reuse is two full-length edge strips from a single tile — one keeps the
+tile's left edge, the other its right edge, cut edges facing the walls, waste
+(if any) in the middle. Strips are paired to minimize tiles (widest with the
+narrowest that fits beside it after the kerf); a corner or irregular piece
+(shorter than a tile on both sides) takes its own tile. "Tiles required" is the
+full tiles plus the tiles consumed by that packing, and the purchase is then
+rounded up to whole boxes.
 
 ## Deploying to GitHub Pages
 

@@ -163,6 +163,7 @@ input:focus, select:focus, textarea:focus {
 #plan { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 #plan.setting { cursor: crosshair; }
 #plan.panning { cursor: grabbing; }
+#plan.hot { cursor: pointer; }
 
 /* ---- Stats ---- */
 .stats {
@@ -215,8 +216,45 @@ input:focus, select:focus, textarea:focus {
   font-weight: 700; vertical-align: top; white-space: nowrap;
   border-right: 1px solid var(--line); background: var(--surface-2);
 }
-.cs-num { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+.cs-num { font-family: var(--mono); }
+.cs-link {
+  font: inherit; font-family: var(--mono); color: var(--accent); font-weight: 600;
+  background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cs-link:hover { color: var(--ink); }
 .cs-size { font-family: var(--mono); }
+
+/* ---- Stock-tile modal ---- */
+.modal {
+  border: none; border-radius: var(--radius); padding: 0; max-width: 640px; width: calc(100% - 32px);
+  box-shadow: 0 20px 60px rgba(35, 32, 27, .3); color: var(--ink); background: var(--surface);
+}
+.modal::backdrop { background: rgba(35, 32, 27, .45); }
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--line);
+}
+.modal-head h2 { margin: 0; font-size: 1rem; letter-spacing: -.01em; }
+.modal-x {
+  font-size: 1.5rem; line-height: 1; border: none; background: none; cursor: pointer;
+  color: var(--ink-soft); padding: 0 4px;
+}
+.modal-x:hover { color: var(--ink); }
+.modal-body { display: flex; gap: 18px; padding: 18px; flex-wrap: wrap; }
+#tileCanvas {
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; flex: 0 0 auto;
+}
+.modal-side { flex: 1; min-width: 180px; }
+.modal-note { margin: 0 0 12px; font-size: .78rem; color: var(--ink-soft); }
+.modal-pieces { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; }
+.modal-pieces li {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 7px 10px; border-bottom: 1px solid var(--line); font-size: .82rem;
+}
+.modal-pieces li.hot { background: var(--accent-soft); border-radius: 6px; }
+.mp-num { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+.mp-size { font-family: var(--mono); }
 
 /* ---- Responsive ---- */
 @media (max-width: 860px) {

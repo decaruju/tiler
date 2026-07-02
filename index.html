@@ -107,9 +107,14 @@
           <label class="lbl sm" for="waste">Waste / breakage margin (%)
             <input type="number" id="waste" value="10" min="0" step="1" />
           </label>
-          <label class="lbl sm" for="price">Price per tile
-            <input type="number" id="price" value="0" min="0" step="0.01" />
-          </label>
+          <div class="row">
+            <label class="lbl sm" for="box">Tiles per box
+              <input type="number" id="box" value="1" min="1" step="1" />
+            </label>
+            <label class="lbl sm" for="price">Price per tile
+              <input type="number" id="price" value="0" min="0" step="0.01" />
+            </label>
+          </div>
         </section>
       </form>
       <p class="error" id="error" hidden></p>
@@ -152,6 +157,10 @@
           <span class="stat-label">Buy with margin</span>
           <span class="stat-value" id="stBuy">–</span>
         </div>
+        <div class="stat">
+          <span class="stat-label">Boxes</span>
+          <span class="stat-value" id="stBoxes">–</span>
+        </div>
         <div class="stat stat-cost">
           <span class="stat-label">Total cost</span>
           <span class="stat-value" id="stCost">–</span>
@@ -161,6 +170,20 @@
       <section class="cutsheet" id="cutSheet" aria-live="polite"></section>
     </section>
   </main>
+
+  <dialog id="tileModal" class="modal">
+    <div class="modal-head">
+      <h2 id="modalTitle">Cut tile</h2>
+      <button type="button" id="modalClose" class="modal-x" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <canvas id="tileCanvas" width="380" height="380"></canvas>
+      <div class="modal-side">
+        <p class="modal-note">Coloured shapes are the pieces cut from this one tile. Gaps are saw kerf and offcut waste.</p>
+        <ul id="modalPieces" class="modal-pieces"></ul>
+      </div>
+    </div>
+  </dialog>
 
   <script src="app.js"></script>
 </body>
