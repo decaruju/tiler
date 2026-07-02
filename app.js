@@ -222,70 +222,123 @@ function computeLayout(cfg) {
   return { tiles, full, cut, area, tileSize };
 }
 
-/* ---- Offcut reuse (edge-constrained) ------------------------------------- */
+/* ---- Offcut reuse (factory-edge-aware guillotine) ------------------------ */
 //
 // Physical constraint: a tile's factory edges must sit on the grout line and
 // every *cut* edge must go against a wall. So a reused piece has to keep the
-// original tile's outer edge on all of its grout-facing sides. The only always
-// safe reuse is therefore two full-length edge strips from a single tile: one
-// keeps the tile's left edge, the other its right edge, cut edges facing the
-// walls, waste (if any) in the middle. A corner/irregular piece (both sides
-// shorter than a tile) can't be paired safely — it takes its own tile.
-
-// Does a dimension span the full tile side (a factory-to-factory length)?
-const isFullLen = (d, tileSize) => d >= tileSize - Math.max(1e-9, tileSize * 1e-4);
-
-// Lay a strip vertically against a stock tile edge at x=`atX`. Rotates a
-// full-width strip 90° so its factory length runs top-to-bottom.
-function placeStrip(stock, piece, atX, tileSize) {
-  const vertical = isFullLen(piece.h, tileSize); // already full-height
-  const cutW = vertical ? piece.w : piece.h;
-  piece.stock = stock.id;
-  piece.place = { x: atX, y: 0, w: cutW, h: tileSize, rot: !vertical };
-  stock.pieces.push(piece);
-}
+// original tile's outer edge on each of its grout-facing sides:
+//   • an edge strip (full length in one direction) needs the tile's outer edge
+//     on 3 sides — it sits as a full-length band against one tile edge;
+//   • a corner piece (shorter than a tile on both sides) needs the outer edge
+//     on 2 adjacent sides — it sits in one corner of the tile.
+// We pack pieces with a guillotine scheme that tracks, for every free region,
+// which of its four sides are still on the tile's perimeter (factory). A piece
+// may only take factory edges from the region's factory sides; each cut then
+// removes those sides from the leftover regions.
 
 function packCuts(tiles, tileSize, kerf, reuse) {
-  const cuts = tiles.filter(t => t.cut);
+  const ts = tileSize;
+  const E = ts * 1e-4;                       // "full length" tolerance
+  const isFull = d => d >= ts - Math.max(1e-9, E);
   const stocks = [];
-  const newStock = () => { const s = { id: stocks.length + 1, tileSize, pieces: [] }; stocks.push(s); return s; };
+  const free = []; // { stock, x, y, w, h, fL, fR, fB, fT }
 
-  const strips = [], solo = [];
-  for (const p of cuts) {
-    const wFull = isFullLen(p.w, tileSize), hFull = isFullLen(p.h, tileSize);
-    // A pairable strip spans the full tile in exactly one direction.
-    if (reuse && (wFull !== hFull)) {
-      p._cutW = hFull ? p.w : p.h; // across-wall width
-      strips.push(p);
-    } else {
-      solo.push(p);
+  const openStock = (withFree) => {
+    const s = { id: stocks.length + 1, tileSize: ts, pieces: [] };
+    stocks.push(s);
+    if (withFree) free.push({ stock: s.id, x: 0, y: 0, w: ts, h: ts, fL: true, fR: true, fB: true, fT: true });
+    return s;
+  };
+
+  // Try to place `piece` in region R. Returns { place, leftovers, waste } or null.
+  function tryPlace(R, piece) {
+    const gap = 1e-9;
+    const wF = isFull(piece.w), hF = isFull(piece.h);
+
+    // Edge strip: a full-length band against a factory side (laid vertically).
+    if (wF || hF) {
+      if (!(R.fT && R.fB) || R.h < ts - E) return null;   // needs full-height region
+      const c = hF ? piece.w : piece.h;                    // across-wall width
+      if (c > R.w + gap) return null;
+      const rot = !hF;                                     // rotate a full-width strip upright
+      const leftW = R.w - c - kerf;
+      if (R.fL) {
+        const leftovers = leftW > gap
+          ? [{ stock: R.stock, x: R.x + c + kerf, y: R.y, w: leftW, h: ts, fL: false, fR: R.fR, fB: true, fT: true }] : [];
+        return { place: { x: R.x, y: R.y, w: c, h: ts, rot }, leftovers, waste: (R.w - c) * ts };
+      }
+      if (R.fR) {
+        const leftovers = leftW > gap
+          ? [{ stock: R.stock, x: R.x, y: R.y, w: leftW, h: ts, fL: R.fL, fR: false, fB: true, fT: true }] : [];
+        return { place: { x: R.x + R.w - c, y: R.y, w: c, h: ts, rot }, leftovers, waste: (R.w - c) * ts };
+      }
+      return null;
     }
+
+    // Corner piece: one corner of the region with two adjacent factory sides.
+    const pw = piece.w, ph = piece.h;
+    if (pw > R.w + gap || ph > R.h + gap) return null;
+    const topH = R.h - ph - kerf, sideW = R.w - pw - kerf;
+    const waste = R.w * R.h - pw * ph;
+    const rowRight = () => sideW > gap;
+    const colTop = () => topH > gap;
+    if (R.fB && R.fL) {                                    // bottom-left
+      const lo = [];
+      if (colTop()) lo.push({ stock: R.stock, x: R.x, y: R.y + ph + kerf, w: R.w, h: topH, fL: R.fL, fR: R.fR, fB: false, fT: R.fT });
+      if (rowRight()) lo.push({ stock: R.stock, x: R.x + pw + kerf, y: R.y, w: sideW, h: ph, fL: false, fR: R.fR, fB: R.fB, fT: false });
+      return { place: { x: R.x, y: R.y, w: pw, h: ph, rot: false }, leftovers: lo, waste };
+    }
+    if (R.fB && R.fR) {                                    // bottom-right
+      const lo = [];
+      if (colTop()) lo.push({ stock: R.stock, x: R.x, y: R.y + ph + kerf, w: R.w, h: topH, fL: R.fL, fR: R.fR, fB: false, fT: R.fT });
+      if (rowRight()) lo.push({ stock: R.stock, x: R.x, y: R.y, w: sideW, h: ph, fL: R.fL, fR: false, fB: R.fB, fT: false });
+      return { place: { x: R.x + R.w - pw, y: R.y, w: pw, h: ph, rot: false }, leftovers: lo, waste };
+    }
+    if (R.fT && R.fL) {                                    // top-left
+      const lo = [];
+      if (colTop()) lo.push({ stock: R.stock, x: R.x, y: R.y, w: R.w, h: topH, fL: R.fL, fR: R.fR, fB: R.fB, fT: false });
+      if (rowRight()) lo.push({ stock: R.stock, x: R.x + pw + kerf, y: R.y + R.h - ph, w: sideW, h: ph, fL: false, fR: R.fR, fB: false, fT: R.fT });
+      return { place: { x: R.x, y: R.y + R.h - ph, w: pw, h: ph, rot: false }, leftovers: lo, waste };
+    }
+    if (R.fT && R.fR) {                                    // top-right
+      const lo = [];
+      if (colTop()) lo.push({ stock: R.stock, x: R.x, y: R.y, w: R.w, h: topH, fL: R.fL, fR: R.fR, fB: R.fB, fT: false });
+      if (rowRight()) lo.push({ stock: R.stock, x: R.x, y: R.y + R.h - ph, w: sideW, h: ph, fL: R.fL, fR: false, fB: false, fT: R.fT });
+      return { place: { x: R.x + R.w - pw, y: R.y + R.h - ph, w: pw, h: ph, rot: false }, leftovers: lo, waste };
+    }
+    return null;
   }
 
-  // Pair strips to minimize tiles: sort by width, greedily match the widest
-  // with the narrowest that still fits beside it (optimal for 2-per-tile).
-  strips.sort((a, b) => a._cutW - b._cutW);
-  let i = 0, j = strips.length - 1;
-  const eps = tileSize * 1e-9;
-  while (i <= j) {
-    const s = newStock();
-    if (i < j && strips[i]._cutW + strips[j]._cutW + kerf <= tileSize + eps) {
-      placeStrip(s, strips[j], 0, tileSize);                                   // left edge
-      placeStrip(s, strips[i], tileSize - strips[i]._cutW, tileSize);          // right edge
-      i++; j--;
-    } else {
-      placeStrip(s, strips[j], 0, tileSize);
-      j--;
-    }
-  }
+  // Hardest pieces first (biggest area), so small offcuts fill the gaps.
+  const order = tiles.filter(t => t.cut)
+    .sort((a, b) => (b.w * b.h) - (a.w * a.h) || Math.max(b.w, b.h) - Math.max(a.w, a.h));
 
-  // Corner / irregular pieces: one tile each, placed in a corner (which keeps
-  // its two factory edges on the grout-facing sides).
-  for (const p of solo) {
-    const s = newStock();
-    p.stock = s.id;
-    p.place = { x: 0, y: 0, w: p.w, h: p.h, rot: false };
-    s.pieces.push(p);
+  for (const piece of order) {
+    // A near-full tile (both sides full) can only come from a whole tile.
+    if (!reuse || (isFull(piece.w) && isFull(piece.h))) {
+      const s = openStock(false);
+      piece.stock = s.id;
+      piece.place = { x: 0, y: 0, w: piece.w, h: piece.h, rot: false };
+      s.pieces.push(piece);
+      continue;
+    }
+    // Best-fit across existing offcuts; otherwise open a fresh tile.
+    let best = null;
+    for (const R of free) {
+      const res = tryPlace(R, piece);
+      if (res && (!best || res.waste < best.res.waste)) best = { R, res };
+    }
+    if (!best) {
+      openStock(true);
+      const R = free[free.length - 1];
+      best = { R, res: tryPlace(R, piece) };
+    }
+    const { R, res } = best;
+    piece.stock = R.stock;
+    piece.place = res.place;
+    stocks[R.stock - 1].pieces.push(piece);
+    free.splice(free.indexOf(R), 1);
+    for (const lo of res.leftovers) free.push(lo);
   }
   return { stocks };
 }

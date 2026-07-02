@@ -51,14 +51,16 @@ it's **full** when the whole square is covered and **cut** otherwise.
 Cut pieces are then packed into as few whole tiles as possible, subject to a
 real-world constraint: a tile's factory edges must sit on the grout line and
 every *cut* edge must go against a wall. So a reused piece has to keep the
-original tile's outer edge on all of its grout-facing sides. The only always
-safe reuse is two full-length edge strips from a single tile — one keeps the
-tile's left edge, the other its right edge, cut edges facing the walls, waste
-(if any) in the middle. Strips are paired to minimize tiles (widest with the
-narrowest that fits beside it after the kerf); a corner or irregular piece
-(shorter than a tile on both sides) takes its own tile. "Tiles required" is the
-full tiles plus the tiles consumed by that packing, and the purchase is then
-rounded up to whole boxes.
+original tile's outer edge on each of its grout-facing sides — an edge strip
+(full length in one direction) needs the outer edge on 3 sides and sits as a
+band against one tile edge; a corner piece (shorter than a tile on both sides)
+needs it on 2 adjacent sides and sits in one corner of the tile. The packer is
+a guillotine bin-packer that tracks, for every leftover region, which of its
+four sides are still on the tile's perimeter, so it will fit multiple strips
+and corner pieces into a single tile (e.g. all four corner cuts of a room can
+come from one tile) as long as each piece's grout-facing edges land on a
+factory edge. "Tiles required" is the full tiles plus the tiles consumed by
+that packing, and the purchase is then rounded up to whole boxes.
 
 ## Deploying to GitHub Pages
 
