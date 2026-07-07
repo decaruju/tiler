@@ -137,7 +137,7 @@ function drawOrigin() {
 
 const $ = id => document.getElementById(id);
 const inputs = ["units", "coords", "tileSize", "grout", "pattern", "rotation",
-  "originX", "originY", "align", "kerf", "minWidth", "reuse", "waste", "box", "price"].map($);
+  "originX", "originY", "align", "kerf", "maxAspect", "reuse", "waste", "box", "price"].map($);
 const errorEl = $("error");
 
 function readConfig() {
@@ -151,7 +151,7 @@ function readConfig() {
     align: $("align").value,
     rowOffset: parseFloat($("pattern").value) || 0,
     kerf: parseFloat($("kerf").value) || 0,
-    minWidth: parseFloat($("minWidth").value) || 0,
+    maxAspect: parseFloat($("maxAspect").value) || 0,
     reuse: $("reuse").checked,
     waste: parseFloat($("waste").value) || 0,
     box: Math.max(1, Math.floor(parseFloat($("box").value) || 1)),
@@ -234,7 +234,7 @@ function recompute(refit) {
     $("stTotal").textContent = layout.total.toLocaleString();
     $("stFull").textContent = layout.full.toLocaleString();
     $("stCut").textContent = layout.cut.toLocaleString();
-    $("stSlivers").textContent = cfg.minWidth > 0 ? layout.slivers.toLocaleString() : "–";
+    $("stSlivers").textContent = cfg.maxAspect > 1 ? layout.slivers.toLocaleString() : "–";
     $("stArea").textContent = fmtArea(layout.area, cfg.units);
     const buy = Math.ceil(layout.total * (1 + cfg.waste / 100));
     $("stBuy").textContent = buy.toLocaleString();

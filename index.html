@@ -77,9 +77,9 @@
             <input type="number" id="kerf" value="0.003" min="0" step="0.001" />
             <span class="hint">material lost per cut — a reused offcut must still fit after it</span>
           </label>
-          <label class="lbl sm" for="minWidth">Min cut width
-            <input type="number" id="minWidth" value="0" min="0" step="0.01" />
-            <span class="hint">flag edge cuts thinner than this as slivers; 0 = off</span>
+          <label class="lbl sm" for="maxAspect">Max aspect ratio
+            <input type="number" id="maxAspect" value="0" min="0" step="0.5" />
+            <span class="hint">flag cut pieces longer than this ×  their width as slivers; 0 = off</span>
           </label>
           <label class="check">
             <input type="checkbox" id="reuse" checked />

@@ -115,7 +115,9 @@ const MAX_TILES = 250000; // safety cap against absurd tile/room ratios
 // rotated by -rotation around the origin, so tiles are axis-aligned there.
 function computeLayout(cfg) {
   const { polygons, tileSize, grout, rotationDeg, originX, originY, align, rowOffset } = cfg;
-  const minWidth = cfg.minWidth > 0 ? cfg.minWidth : 0; // flag cut pieces thinner than this
+  // Flag cut pieces more elongated than this (long side / short side). Applies
+  // to strips and corner pieces alike, so no piece has a too-thin side.
+  const maxAspect = cfg.maxAspect > 1 ? cfg.maxAspect : 0;
 
   const pitch = tileSize + grout;
   if (pitch <= 0) throw new Error("Tile size must be positive.");
@@ -209,8 +211,11 @@ function computeLayout(cfg) {
         tile.w = cxmax - cxmin; tile.h = cymax - cymin;
         // Real piece outline(s), relative to the piece's own bounding box.
         tile.shape = clips.map(ring => ring.map(p => ({ x: p.x - cxmin, y: p.y - cymin })));
-        // Sliver: a cut piece thinner than the minimum acceptable width.
-        if (minWidth > 0 && Math.min(tile.w, tile.h) < minWidth) { tile.sliver = true; slivers++; }
+        // Sliver: a cut piece too elongated (long side / short side).
+        if (maxAspect > 0) {
+          const lo = Math.min(tile.w, tile.h), hi = Math.max(tile.w, tile.h);
+          if (lo <= 1e-9 || hi / lo > maxAspect) { tile.sliver = true; slivers++; }
+        }
       }
       tiles.push(tile);
     }
