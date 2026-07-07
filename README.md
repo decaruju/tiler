@@ -23,7 +23,9 @@ No build step, no dependencies — just static HTML/CSS/JS.
    number of tiles you actually buy.
 4. **Origin** — the point the first tile is laid from. Type coordinates,
    click **Set origin** and click on the plan, or just drag the ✛ marker.
-   Choose whether a tile *corner* or *centre* sits on the origin.
+   Choose whether a tile *corner* or *centre* sits on the origin. **Search best
+   origin** sweeps every distinct origin offset (the tiling repeats every tile
+   pitch) and picks the one that needs the fewest tiles.
 5. **Purchasing** — set a waste/breakage margin, the number of **tiles per
    box** (tiles are sold in packs, so the purchase rounds up to whole boxes),
    and a price per tile to get boxes needed and total cost.

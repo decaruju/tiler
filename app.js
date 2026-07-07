@@ -549,6 +549,79 @@ $("printBtn").addEventListener("click", () => {
   window.open(`${location.origin}${base}print.html?${buildParams()}`, "_blank");
 });
 
+/* ---- Search best origin -------------------------------------------------- */
+//
+// The tiling repeats every pitch (tile + grout), so shifting the origin by a
+// whole pitch reproduces the same layout. The full search space is therefore
+// origin offsets within one pitch cell [0, pitch)². We sweep a coarse grid,
+// then refine around the best, minimizing tiles required (full + packed cuts).
+
+function tilesForOrigin(cfg, polygons, ox, oy) {
+  const layout = computeLayout({ ...cfg, polygons, originX: ox, originY: oy });
+  const { stocks } = packCuts(layout.tiles, cfg.tileSize, cfg.kerf, cfg.reuse);
+  return { total: layout.full + stocks.length, cut: layout.cut };
+}
+
+function searchBestOrigin() {
+  const cfg = readConfig();
+  if (!(cfg.tileSize > 0)) return null;
+  const polygons = parseRooms($("coords").value);
+  const pitch = cfg.tileSize + cfg.grout;
+  if (!(pitch > 0)) return null;
+
+  let area = 0;
+  for (const poly of polygons) area += polygonArea(poly);
+  const est = area / (cfg.tileSize * cfg.tileSize);      // rough tile count
+  const N = est > 1500 ? 8 : est > 500 ? 11 : 16;        // coarse resolution
+  const M = est > 1500 ? 0 : 6;                          // refine steps
+
+  let best = null;
+  const wrap = v => ((v % pitch) + pitch) % pitch;
+  const consider = (ox, oy) => {
+    let r;
+    try { r = tilesForOrigin(cfg, polygons, wrap(ox), wrap(oy)); } catch { return; }
+    if (!best || r.total < best.total || (r.total === best.total && r.cut < best.cut) ||
+        (r.total === best.total && r.cut === best.cut && ox + oy < best.ox + best.oy)) {
+      best = { ox: wrap(ox), oy: wrap(oy), total: r.total, cut: r.cut };
+    }
+  };
+
+  const step = pitch / N;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) consider(i * step, j * step);
+
+  if (M > 0) {                                           // refine around the winner
+    const bx = best.ox, by = best.oy, fine = step / M;
+    for (let i = -M; i <= M; i++) for (let j = -M; j <= M; j++) consider(bx + i * fine, by + j * fine);
+  }
+  return best;
+}
+
+const searchBtn = $("searchBtn");
+searchBtn.addEventListener("click", () => {
+  const label = "Search best origin";
+  searchBtn.disabled = true;
+  searchBtn.textContent = "Searching…";
+  // Defer so the "Searching…" label paints before the synchronous sweep.
+  setTimeout(() => {
+    let msg = label;
+    try {
+      const before = state.layout ? state.layout.total : null;
+      const best = searchBestOrigin();
+      if (best) {
+        $("originX").value = +best.ox.toFixed(4);
+        $("originY").value = +best.oy.toFixed(4);
+        recompute(false);
+        const now = state.layout.total;
+        const saved = before != null ? before - now : 0;
+        msg = saved > 0 ? `Saved ${saved} tile${saved === 1 ? "" : "s"}` : "Already optimal";
+      }
+    } catch { /* invalid input — leave origin as-is */ }
+    searchBtn.textContent = msg;
+    searchBtn.disabled = false;
+    setTimeout(() => { searchBtn.textContent = label; }, 2200);
+  }, 20);
+});
+
 /* Boot */
 resizeCanvas();
 loadFromURL();
