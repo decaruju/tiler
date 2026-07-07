@@ -6,7 +6,7 @@
 
 const PAL = {
   ink: "#23201b", inkSoft: "#6b6357", line: "#ded7c9",
-  full: "#d9e2df", fullLine: "#8ba39c", cut: "#e58a5f", accent: "#b5502e",
+  full: "#d9e2df", fullLine: "#8ba39c", cut: "#e58a5f", sliver: "#8a1e1e", accent: "#b5502e",
   mono: 'ui-monospace, Menlo, Consolas, monospace',
   sans: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
 };
@@ -25,6 +25,7 @@ function paramsToCfg() {
     originY: num("originY", 0),
     align: q.get("align") || "corner",
     kerf: num("kerf", 0),
+    minWidth: num("minWidth", 0),
     reuse: q.get("reuse") !== "0",
     waste: num("waste", 0),
     box: Math.max(1, Math.floor(num("box", 1))),
@@ -82,7 +83,7 @@ function drawPlan(cvs, layout, polygons, origin, unit) {
     ctx.beginPath();
     t.corners.forEach((p, i) => { const s = S(p); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); });
     ctx.closePath();
-    ctx.fillStyle = t.cut ? PAL.cut : PAL.full;
+    ctx.fillStyle = t.sliver ? PAL.sliver : t.cut ? PAL.cut : PAL.full;
     ctx.fill();
     ctx.strokeStyle = t.cut ? "rgba(255,255,255,.6)" : PAL.fullLine;
     ctx.stroke();
@@ -120,7 +121,7 @@ function drawStock(cvs, stock, unit) {
 
   for (const piece of stock.pieces) {
     const pl = piece.place;
-    ctx.fillStyle = PAL.cut; ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 1.3;
+    ctx.fillStyle = piece.sliver ? PAL.sliver : PAL.cut; ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 1.3;
     for (const ring of (piece.shape || [[]])) {
       ctx.beginPath();
       ring.forEach((q, i) => {
@@ -173,6 +174,7 @@ function render() {
     spec("Rotation", `${cfg.rotationDeg}°`),
     spec("Origin", `${cfg.originX}, ${cfg.originY} (${cfg.align})`),
     spec("Saw kerf", fmtLen(cfg.kerf, u)),
+    spec("Min cut width", cfg.minWidth > 0 ? fmtLen(cfg.minWidth, u) : "—"),
     spec("Reuse offcuts", cfg.reuse ? "yes" : "no"),
     spec("Waste margin", `${cfg.waste}%`),
     spec("Tiles per box", cfg.box),
@@ -183,6 +185,7 @@ function render() {
     tot("Tiles required", layout.total.toLocaleString(), true),
     tot("Full tiles", layout.full.toLocaleString()),
     tot("Cut pieces", cutCount.toLocaleString()),
+    cfg.minWidth > 0 ? tot("Slivers", layout.slivers.toLocaleString()) : "",
     tot("Room area", fmtArea(layout.area, u)),
     tot("Buy w/ margin", buy.toLocaleString()),
     tot("Boxes", cfg.box > 1 ? `${boxes} (${tilesBought})` : boxes),

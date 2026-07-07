@@ -20,12 +20,14 @@ No build step, no dependencies — just static HTML/CSS/JS.
 3. **Cutting** — set the saw blade width (kerf) — the material lost on each
    cut — and choose whether to reuse offcuts. With reuse on, one tile is used
    for two edge cuts wherever they fit side by side (see below), lowering the
-   number of tiles you actually buy.
+   number of tiles you actually buy. Set a **min cut width** to flag thin edge
+   cuts (slivers) — they show in dark red on the plan and are counted; the
+   origin search then avoids them first.
 4. **Origin** — the point the first tile is laid from. Type coordinates,
    click **Set origin** and click on the plan, or just drag the ✛ marker.
    Choose whether a tile *corner* or *centre* sits on the origin. **Search best
    origin** sweeps every distinct origin offset (the tiling repeats every tile
-   pitch) and picks the one that needs the fewest tiles.
+   pitch) and picks the best one — fewest slivers first, then fewest tiles.
 5. **Purchasing** — set a waste/breakage margin, the number of **tiles per
    box** (tiles are sold in packs, so the purchase rounds up to whole boxes),
    and a price per tile to get boxes needed and total cost.

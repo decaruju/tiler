@@ -74,7 +74,8 @@ function draw() {
   pathPolys(state.polygons);
   ctx.clip("evenodd");
 
-  const full = css("--tile-full"), fullLine = css("--tile-full-line"), cut = css("--cut");
+  const full = css("--tile-full"), fullLine = css("--tile-full-line"),
+        cut = css("--cut"), sliver = css("--sliver");
   ctx.lineWidth = 1;
   for (const t of state.layout.tiles) {
     ctx.beginPath();
@@ -83,7 +84,7 @@ function draw() {
       i === 0 ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y);
     });
     ctx.closePath();
-    ctx.fillStyle = t.cut ? cut : full;
+    ctx.fillStyle = t.sliver ? sliver : t.cut ? cut : full;
     ctx.fill();
     ctx.strokeStyle = t.cut ? "rgba(255,255,255,.6)" : fullLine;
     ctx.stroke();
@@ -136,7 +137,7 @@ function drawOrigin() {
 
 const $ = id => document.getElementById(id);
 const inputs = ["units", "coords", "tileSize", "grout", "pattern", "rotation",
-  "originX", "originY", "align", "kerf", "reuse", "waste", "box", "price"].map($);
+  "originX", "originY", "align", "kerf", "minWidth", "reuse", "waste", "box", "price"].map($);
 const errorEl = $("error");
 
 function readConfig() {
@@ -150,6 +151,7 @@ function readConfig() {
     align: $("align").value,
     rowOffset: parseFloat($("pattern").value) || 0,
     kerf: parseFloat($("kerf").value) || 0,
+    minWidth: parseFloat($("minWidth").value) || 0,
     reuse: $("reuse").checked,
     waste: parseFloat($("waste").value) || 0,
     box: Math.max(1, Math.floor(parseFloat($("box").value) || 1)),
@@ -161,7 +163,7 @@ function showError(msg) {
   errorEl.textContent = msg;
   errorEl.hidden = false;
   state.layout = null;
-  ["stTotal", "stFull", "stCut", "stArea", "stBuy", "stBoxes", "stCost"].forEach(id => ($(id).textContent = "–"));
+  ["stTotal", "stFull", "stCut", "stSlivers", "stArea", "stBuy", "stBoxes", "stCost"].forEach(id => ($(id).textContent = "–"));
   $("cutSheet").innerHTML = "";
   draw();
 }
@@ -232,6 +234,7 @@ function recompute(refit) {
     $("stTotal").textContent = layout.total.toLocaleString();
     $("stFull").textContent = layout.full.toLocaleString();
     $("stCut").textContent = layout.cut.toLocaleString();
+    $("stSlivers").textContent = cfg.minWidth > 0 ? layout.slivers.toLocaleString() : "–";
     $("stArea").textContent = fmtArea(layout.area, cfg.units);
     const buy = Math.ceil(layout.total * (1 + cfg.waste / 100));
     $("stBuy").textContent = buy.toLocaleString();
@@ -559,7 +562,7 @@ $("printBtn").addEventListener("click", () => {
 function tilesForOrigin(cfg, polygons, ox, oy) {
   const layout = computeLayout({ ...cfg, polygons, originX: ox, originY: oy });
   const { stocks } = packCuts(layout.tiles, cfg.tileSize, cfg.kerf, cfg.reuse);
-  return { total: layout.full + stocks.length, cut: layout.cut };
+  return { total: layout.full + stocks.length, cut: layout.cut, slivers: layout.slivers };
 }
 
 function searchBestOrigin() {
@@ -577,13 +580,18 @@ function searchBestOrigin() {
 
   let best = null;
   const wrap = v => ((v % pitch) + pitch) % pitch;
+  // Rank by: fewest slivers, then fewest tiles, then fewest cuts, then tidiest origin.
+  const better = (r, ox, oy) => {
+    if (!best) return true;
+    if (r.slivers !== best.slivers) return r.slivers < best.slivers;
+    if (r.total !== best.total) return r.total < best.total;
+    if (r.cut !== best.cut) return r.cut < best.cut;
+    return wrap(ox) + wrap(oy) < best.ox + best.oy;
+  };
   const consider = (ox, oy) => {
     let r;
     try { r = tilesForOrigin(cfg, polygons, wrap(ox), wrap(oy)); } catch { return; }
-    if (!best || r.total < best.total || (r.total === best.total && r.cut < best.cut) ||
-        (r.total === best.total && r.cut === best.cut && ox + oy < best.ox + best.oy)) {
-      best = { ox: wrap(ox), oy: wrap(oy), total: r.total, cut: r.cut };
-    }
+    if (better(r, ox, oy)) best = { ox: wrap(ox), oy: wrap(oy), total: r.total, cut: r.cut, slivers: r.slivers };
   };
 
   const step = pitch / N;
@@ -605,15 +613,18 @@ searchBtn.addEventListener("click", () => {
   setTimeout(() => {
     let msg = label;
     try {
-      const before = state.layout ? state.layout.total : null;
+      const before = state.layout ? { total: state.layout.total, slivers: state.layout.slivers } : null;
       const best = searchBestOrigin();
       if (best) {
         $("originX").value = +best.ox.toFixed(4);
         $("originY").value = +best.oy.toFixed(4);
         recompute(false);
-        const now = state.layout.total;
-        const saved = before != null ? before - now : 0;
-        msg = saved > 0 ? `Saved ${saved} tile${saved === 1 ? "" : "s"}` : "Already optimal";
+        const savedTiles = before ? before.total - state.layout.total : 0;
+        const savedSlivers = before ? before.slivers - state.layout.slivers : 0;
+        if (savedSlivers > 0) msg = `−${savedSlivers} sliver${savedSlivers === 1 ? "" : "s"}` +
+          (savedTiles > 0 ? `, −${savedTiles} tile${savedTiles === 1 ? "" : "s"}` : "");
+        else if (savedTiles > 0) msg = `Saved ${savedTiles} tile${savedTiles === 1 ? "" : "s"}`;
+        else msg = "Already optimal";
       }
     } catch { /* invalid input — leave origin as-is */ }
     searchBtn.textContent = msg;

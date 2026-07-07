@@ -115,6 +115,7 @@ const MAX_TILES = 250000; // safety cap against absurd tile/room ratios
 // rotated by -rotation around the origin, so tiles are axis-aligned there.
 function computeLayout(cfg) {
   const { polygons, tileSize, grout, rotationDeg, originX, originY, align, rowOffset } = cfg;
+  const minWidth = cfg.minWidth > 0 ? cfg.minWidth : 0; // flag cut pieces thinner than this
 
   const pitch = tileSize + grout;
   if (pitch <= 0) throw new Error("Tile size must be positive.");
@@ -154,8 +155,8 @@ function computeLayout(cfg) {
   const epsArea = tileArea * EPS_RATIO;
   const fullArea = tileArea * (1 - 1e-6);
 
-  const tiles = []; // { num, corners:[world], cut, label:{x,y}, w?, h? }
-  let full = 0, cut = 0;
+  const tiles = []; // { num, corners:[world], cut, label:{x,y}, w?, h?, sliver? }
+  let full = 0, cut = 0, slivers = 0;
 
   for (let j = jStart; j <= jEnd; j++) {
     // Running/third bond: shift each row by a fraction of the pitch.
@@ -208,6 +209,8 @@ function computeLayout(cfg) {
         tile.w = cxmax - cxmin; tile.h = cymax - cymin;
         // Real piece outline(s), relative to the piece's own bounding box.
         tile.shape = clips.map(ring => ring.map(p => ({ x: p.x - cxmin, y: p.y - cymin })));
+        // Sliver: a cut piece thinner than the minimum acceptable width.
+        if (minWidth > 0 && Math.min(tile.w, tile.h) < minWidth) { tile.sliver = true; slivers++; }
       }
       tiles.push(tile);
     }
@@ -219,7 +222,7 @@ function computeLayout(cfg) {
   let area = 0;
   for (const poly of polygons) area += polygonArea(poly);
 
-  return { tiles, full, cut, area, tileSize };
+  return { tiles, full, cut, slivers, area, tileSize };
 }
 
 /* ---- Offcut reuse (factory-edge-aware guillotine) ------------------------ */
