@@ -137,7 +137,7 @@ function drawOrigin() {
 
 const $ = id => document.getElementById(id);
 const inputs = ["units", "coords", "tileW", "tileH", "grout", "pattern", "rotation",
-  "originX", "originY", "align", "kerf", "maxAspect", "reuse", "waste", "box", "price"].map($);
+  "originX", "originY", "align", "kerf", "maxAspect", "reuse", "rollWidth", "waste", "box", "price"].map($);
 const errorEl = $("error");
 
 function readConfig() {
@@ -156,6 +156,7 @@ function readConfig() {
     kerf: parseFloat($("kerf").value) || 0,
     maxAspect: parseFloat($("maxAspect").value) || 0,
     reuse: $("reuse").checked,
+    rollWidth: parseFloat($("rollWidth").value) || 0,
     waste: parseFloat($("waste").value) || 0,
     box: Math.max(1, Math.floor(parseFloat($("box").value) || 1)),
     price: parseFloat($("price").value) || 0,
@@ -166,7 +167,7 @@ function showError(msg) {
   errorEl.textContent = msg;
   errorEl.hidden = false;
   state.layout = null;
-  ["stTotal", "stFull", "stCut", "stSlivers", "stArea", "stBuy", "stBoxes", "stCost"].forEach(id => ($(id).textContent = "–"));
+  ["stTotal", "stFull", "stCut", "stSlivers", "stArea", "stMembrane", "stBuy", "stBoxes", "stCost"].forEach(id => ($(id).textContent = "–"));
   $("cutSheet").innerHTML = "";
   draw();
 }
@@ -239,6 +240,10 @@ function recompute(refit) {
     $("stCut").textContent = layout.cut.toLocaleString();
     $("stSlivers").textContent = cfg.maxAspect > 1 ? layout.slivers.toLocaleString() : "–";
     $("stArea").textContent = fmtArea(layout.area, cfg.units);
+
+    // Underlayment membrane roll length (butt-jointed strips).
+    const membrane = membraneRoll(polygons, cfg.rollWidth);
+    $("stMembrane").textContent = membrane ? fmtLen(membrane.length, cfg.units) : "–";
     const buy = Math.ceil(layout.total * (1 + cfg.waste / 100));
     $("stBuy").textContent = buy.toLocaleString();
 

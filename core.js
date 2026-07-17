@@ -383,6 +383,49 @@ function packCuts(tiles, tileW, tileH, kerf, reuse) {
   return { stocks };
 }
 
+/* ---- Underlayment membrane (rolls, e.g. Ditra) --------------------------- */
+//
+// Membrane is butt-jointed and laid in parallel strips of a fixed roll width.
+// The roll length needed is the total run of those strips. We lay bands of
+// `rollWidth` across the room, clip the room to each band, and sum each band's
+// span in the strip direction — so L-shaped rooms only count where they exist.
+// Both orientations are tried; the one needing less roll length wins.
+
+function membraneRoll(polygons, rollWidth) {
+  if (!(rollWidth > 0)) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const poly of polygons) for (const p of poly) {
+    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+  }
+
+  const run = (alongX) => {
+    const lo0 = alongX ? minY : minX, hi0 = alongX ? maxY : maxX;
+    const nb = Math.max(1, Math.ceil((hi0 - lo0) / rollWidth - 1e-9));
+    let length = 0, strips = 0;
+    for (let k = 0; k < nb; k++) {
+      const a = lo0 + k * rollWidth, b = a + rollWidth;
+      let lo = Infinity, hi = -Infinity;
+      for (const poly of polygons) {
+        const clip = alongX
+          ? clipToRect(poly, minX - 1, a, maxX + 1, b)   // horizontal band
+          : clipToRect(poly, a, minY - 1, b, maxY + 1);  // vertical band
+        for (const p of clip) {
+          const v = alongX ? p.x : p.y;
+          if (v < lo) lo = v; if (v > hi) hi = v;
+        }
+      }
+      if (hi > lo) { length += hi - lo; strips++; }
+    }
+    return { length, strips };
+  };
+
+  const h = run(true), v = run(false);
+  return h.length <= v.length
+    ? { length: h.length, strips: h.strips, direction: "horizontal", rollWidth }
+    : { length: v.length, strips: v.strips, direction: "vertical", rollWidth };
+}
+
 /* ---- Units & formatting -------------------------------------------------- */
 
 const UNIT = { m: "m", cm: "cm", mm: "mm", ft: "ft", in: "in" };

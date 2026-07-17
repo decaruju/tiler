@@ -43,8 +43,15 @@ size, grouped by the physical tile it's cut from. **Click any cut tile on the
 plan** (or a number in the cut sheet) to open a diagram of that whole tile with
 every piece nested in place, showing the cuts and the leftover waste.
 
-Results update live: tiles required, full vs. cut counts, room area, quantity
-to buy with margin, boxes needed and total cost. Scroll to zoom, drag to pan.
+Set an **underlayment membrane roll width** (e.g. 1.016 m / 40 in for Ditra) to
+get the roll length needed. Membrane is laid in butt-jointed parallel strips, so
+the length is the total run of those strips; the room is clipped to each strip
+band (L-shapes count only where they exist) and both strip orientations are
+tried, reporting the shorter.
+
+Results update live: tiles required, full vs. cut counts, room area, membrane
+roll length, quantity to buy with margin, boxes needed and total cost. Scroll to
+zoom, drag to pan.
 
 **Share link** encodes every spec into the URL query string (and copies it to
 your clipboard) so you can send a fully pre-filled plan to someone else.

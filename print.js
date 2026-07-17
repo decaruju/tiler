@@ -31,6 +31,7 @@ function paramsToCfg() {
     kerf: num("kerf", 0),
     maxAspect: num("maxAspect", 0),
     reuse: q.get("reuse") !== "0",
+    rollWidth: num("rollWidth", 0),
     waste: num("waste", 0),
     box: Math.max(1, Math.floor(num("box", 1))),
     price: num("price", 0),
@@ -168,6 +169,7 @@ function render() {
   const tilesBought = boxes * cfg.box;
   const cost = tilesBought * cfg.price;
   const cutCount = layout.tiles.filter(t => t.cut).length;
+  const membrane = membraneRoll(polygons, cfg.rollWidth);
 
   const spec = (k, v) => `<div class="spec"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   const tot = (k, v, big) => `<div class="tot${big ? " big" : ""}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
@@ -182,6 +184,7 @@ function render() {
     spec("Saw kerf", fmtLen(cfg.kerf, u)),
     spec("Max aspect ratio", cfg.maxAspect > 1 ? `${cfg.maxAspect}:1` : "—"),
     spec("Reuse offcuts", cfg.reuse ? "yes" : "no"),
+    membrane ? spec("Membrane roll", `${fmtLen(cfg.rollWidth, u)} wide → ${membrane.strips} strips`) : "",
     spec("Waste margin", `${cfg.waste}%`),
     spec("Tiles per box", cfg.box),
     spec("Price per tile", cfg.price || "—"),
@@ -193,6 +196,7 @@ function render() {
     tot("Cut pieces", cutCount.toLocaleString()),
     cfg.maxAspect > 1 ? tot("Slivers", layout.slivers.toLocaleString()) : "",
     tot("Room area", fmtArea(layout.area, u)),
+    membrane ? tot("Membrane roll", fmtLen(membrane.length, u)) : "",
     tot("Buy w/ margin", buy.toLocaleString()),
     tot("Boxes", cfg.box > 1 ? `${boxes} (${tilesBought})` : boxes),
     cfg.price > 0 ? tot("Total cost", cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : "",

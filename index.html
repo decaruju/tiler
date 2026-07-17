@@ -111,6 +111,14 @@
         </section>
 
         <section class="field-group">
+          <h2>Underlayment</h2>
+          <label class="lbl sm" for="rollWidth">Membrane roll width
+            <input type="number" id="rollWidth" value="0" min="0" step="0.01" />
+            <span class="hint">roll length needed to cover the floor; 0 = off. Ditra ≈ 1.016&nbsp;m (40&nbsp;in)</span>
+          </label>
+        </section>
+
+        <section class="field-group">
           <h2>Purchasing</h2>
           <label class="lbl sm" for="waste">Waste / breakage margin (%)
             <input type="number" id="waste" value="10" min="0" step="1" />
@@ -167,6 +175,10 @@
         <div class="stat">
           <span class="stat-label">Room area</span>
           <span class="stat-value" id="stArea">–</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Membrane roll</span>
+          <span class="stat-value" id="stMembrane">–</span>
         </div>
         <div class="stat stat-buy">
           <span class="stat-label">Buy with margin</span>
