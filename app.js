@@ -104,7 +104,7 @@ function draw() {
 
 // Number every tile — only when tiles are large enough on screen to read.
 function drawNumbers() {
-  const px = view.scale * (state.layout.tileSize || 0);
+  const px = view.scale * Math.min(state.layout.tileW || 0, state.layout.tileH || 0);
   if (px < 24) return;
   const size = Math.min(13, px * 0.26);
   ctx.font = `600 ${size}px ${css("--mono") || "monospace"}`;
@@ -136,20 +136,23 @@ function drawOrigin() {
 /* ---- Wiring -------------------------------------------------------------- */
 
 const $ = id => document.getElementById(id);
-const inputs = ["units", "coords", "tileSize", "grout", "pattern", "rotation",
+const inputs = ["units", "coords", "tileW", "tileH", "grout", "pattern", "rotation",
   "originX", "originY", "align", "kerf", "maxAspect", "reuse", "waste", "box", "price"].map($);
 const errorEl = $("error");
 
 function readConfig() {
+  const patt = $("pattern").value;
   return {
     units: $("units").value,
-    tileSize: parseFloat($("tileSize").value),
+    tileW: parseFloat($("tileW").value),
+    tileH: parseFloat($("tileH").value),
     grout: parseFloat($("grout").value) || 0,
     rotationDeg: parseFloat($("rotation").value) || 0,
     originX: parseFloat($("originX").value) || 0,
     originY: parseFloat($("originY").value) || 0,
     align: $("align").value,
-    rowOffset: parseFloat($("pattern").value) || 0,
+    rowOffset: patt === "seam" ? 0 : (parseFloat(patt) || 0),
+    seam: patt === "seam",
     kerf: parseFloat($("kerf").value) || 0,
     maxAspect: parseFloat($("maxAspect").value) || 0,
     reuse: $("reuse").checked,
@@ -214,13 +217,13 @@ function recompute(refit) {
   let cfg;
   try {
     cfg = readConfig();
-    if (!(cfg.tileSize > 0)) throw new Error("Tile size must be a positive number.");
+    if (!(cfg.tileW > 0) || !(cfg.tileH > 0)) throw new Error("Tile width and height must be positive.");
     if (cfg.kerf < 0) throw new Error("Saw kerf can't be negative.");
     const polygons = parseRooms($("coords").value);
     const layout = computeLayout({ ...cfg, polygons });
 
     // Reuse offcuts to work out how many physical tiles the cuts really need.
-    const { stocks } = packCuts(layout.tiles, cfg.tileSize, cfg.kerf, cfg.reuse);
+    const { stocks } = packCuts(layout.tiles, cfg.tileW, cfg.tileH, cfg.kerf, cfg.reuse);
     layout.stocks = stocks;
     layout.cutStock = stocks.length;
     layout.total = layout.full + layout.cutStock;
@@ -406,18 +409,19 @@ function drawStockTile(stock, unit, highlightNum) {
   tileCtx.clearRect(0, 0, size, size);
 
   const pad = 26;
-  const ts = stock.tileSize;
-  const scale = (size - pad * 2) / ts;
-  // Grid (y-up) -> canvas. tileX/tileY in [0, ts].
-  const cx = tx => pad + tx * scale;
-  const cy = ty => size - pad - ty * scale;
+  const TW = stock.tileW, TH = stock.tileH;
+  const scale = Math.min((size - pad * 2) / TW, (size - pad * 2) / TH);
+  const offX = (size - TW * scale) / 2, offY = (size - TH * scale) / 2;
+  // Grid (y-up) -> canvas.
+  const cx = tx => offX + tx * scale;
+  const cy = ty => size - offY - ty * scale;
 
   // Stock tile body = waste/uncut background.
   tileCtx.fillStyle = css("--tile-full");
   tileCtx.strokeStyle = css("--ink");
   tileCtx.lineWidth = 2;
   tileCtx.beginPath();
-  tileCtx.rect(cx(0), cy(ts), ts * scale, ts * scale);
+  tileCtx.rect(cx(0), cy(TH), TW * scale, TH * scale);
   tileCtx.fill();
   tileCtx.stroke();
 
@@ -431,11 +435,11 @@ function drawStockTile(stock, unit, highlightNum) {
     return { x: pl.x + nx, y: pl.y + ny };
   };
 
-  const cut = css("--cut");
+  const cut = css("--cut"), sliverC = css("--sliver");
   for (const piece of stock.pieces) {
     const pl = place(piece);
     const hot = piece.num === highlightNum;
-    tileCtx.fillStyle = hot ? css("--accent") : cut;
+    tileCtx.fillStyle = hot ? css("--accent") : piece.sliver ? sliverC : cut;
     tileCtx.strokeStyle = "rgba(255,255,255,.85)";
     tileCtx.lineWidth = 1.5;
     for (const ring of (piece.shape || [[]])) {
@@ -463,7 +467,7 @@ function drawStockTile(stock, unit, highlightNum) {
   tileCtx.font = "11px " + (css("--sans") || "sans-serif");
   tileCtx.textAlign = "center";
   tileCtx.textBaseline = "top";
-  tileCtx.fillText(`${fmtLen(ts, unit)} × ${fmtLen(ts, unit)} tile`, size / 2, cy(0) + 6);
+  tileCtx.fillText(`${fmtLen(TW, unit)} × ${fmtLen(TH, unit)} tile`, size / 2, cy(0) + 6);
 }
 
 function openTileModal(stockId, highlightNum) {
@@ -506,6 +510,10 @@ const SHARE_FIELDS = inputs.map(el => el.id);
 
 function loadFromURL() {
   const params = new URLSearchParams(location.search);
+  // Back-compat: older links used a single square "tileSize".
+  if (params.has("tileSize") && !params.has("tileW")) {
+    $("tileW").value = $("tileH").value = params.get("tileSize");
+  }
   let found = false;
   for (const id of SHARE_FIELDS) {
     if (!params.has(id)) continue;
@@ -561,45 +569,46 @@ $("printBtn").addEventListener("click", () => {
 
 function tilesForOrigin(cfg, polygons, ox, oy) {
   const layout = computeLayout({ ...cfg, polygons, originX: ox, originY: oy });
-  const { stocks } = packCuts(layout.tiles, cfg.tileSize, cfg.kerf, cfg.reuse);
+  const { stocks } = packCuts(layout.tiles, cfg.tileW, cfg.tileH, cfg.kerf, cfg.reuse);
   return { total: layout.full + stocks.length, cut: layout.cut, slivers: layout.slivers };
 }
 
 function searchBestOrigin() {
   const cfg = readConfig();
-  if (!(cfg.tileSize > 0)) return null;
+  if (!(cfg.tileW > 0) || !(cfg.tileH > 0)) return null;
   const polygons = parseRooms($("coords").value);
-  const pitch = cfg.tileSize + cfg.grout;
-  if (!(pitch > 0)) return null;
+  const pitchX = cfg.tileW + cfg.grout, pitchY = cfg.tileH + cfg.grout;
+  if (!(pitchX > 0) || !(pitchY > 0)) return null;
 
   let area = 0;
   for (const poly of polygons) area += polygonArea(poly);
-  const est = area / (cfg.tileSize * cfg.tileSize);      // rough tile count
+  const est = area / (cfg.tileW * cfg.tileH);            // rough tile count
   const N = est > 1500 ? 8 : est > 500 ? 11 : 16;        // coarse resolution
   const M = est > 1500 ? 0 : 6;                          // refine steps
 
   let best = null;
-  const wrap = v => ((v % pitch) + pitch) % pitch;
+  const wrapX = v => ((v % pitchX) + pitchX) % pitchX;
+  const wrapY = v => ((v % pitchY) + pitchY) % pitchY;
   // Rank by: fewest slivers, then fewest tiles, then fewest cuts, then tidiest origin.
   const better = (r, ox, oy) => {
     if (!best) return true;
     if (r.slivers !== best.slivers) return r.slivers < best.slivers;
     if (r.total !== best.total) return r.total < best.total;
     if (r.cut !== best.cut) return r.cut < best.cut;
-    return wrap(ox) + wrap(oy) < best.ox + best.oy;
+    return wrapX(ox) + wrapY(oy) < best.ox + best.oy;
   };
   const consider = (ox, oy) => {
     let r;
-    try { r = tilesForOrigin(cfg, polygons, wrap(ox), wrap(oy)); } catch { return; }
-    if (better(r, ox, oy)) best = { ox: wrap(ox), oy: wrap(oy), total: r.total, cut: r.cut, slivers: r.slivers };
+    try { r = tilesForOrigin(cfg, polygons, wrapX(ox), wrapY(oy)); } catch { return; }
+    if (better(r, ox, oy)) best = { ox: wrapX(ox), oy: wrapY(oy), total: r.total, cut: r.cut, slivers: r.slivers };
   };
 
-  const step = pitch / N;
-  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) consider(i * step, j * step);
+  const stepX = pitchX / N, stepY = pitchY / N;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) consider(i * stepX, j * stepY);
 
   if (M > 0) {                                           // refine around the winner
-    const bx = best.ox, by = best.oy, fine = step / M;
-    for (let i = -M; i <= M; i++) for (let j = -M; j <= M; j++) consider(bx + i * fine, by + j * fine);
+    const bx = best.ox, by = best.oy, fineX = stepX / M, fineY = stepY / M;
+    for (let i = -M; i <= M; i++) for (let j = -M; j <= M; j++) consider(bx + i * fineX, by + j * fineY);
   }
   return best;
 }

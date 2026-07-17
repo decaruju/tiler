@@ -14,9 +14,12 @@ No build step, no dependencies — just static HTML/CSS/JS.
    walking around the perimeter. Concave shapes (L-shapes, alcoves) work.
    Separate multiple rooms with a blank line. Pick the unit that all length
    inputs use.
-2. **Tiles** — set the square tile side, the grout/joint width, the laying
-   pattern (stacked grid, running ½ bond, third ⅓ bond) and an optional
-   rotation angle.
+2. **Tiles** — set the tile **width** and **height** (they can differ, for
+   rectangular tiles or planks), the grout/joint width, an optional rotation
+   angle, and the laying pattern: stacked grid, running ½ bond, third ⅓ bond,
+   or **running seam** for planks — each row is offset by the previous row's
+   end-offcut, giving the continuous staggered seam of vinyl/laminate floors
+   (and that end offcut is reused to start the next row).
 3. **Cutting** — set the saw blade width (kerf) — the material lost on each
    cut — and choose whether to reuse offcuts. With reuse on, one tile is used
    for two edge cuts wherever they fit side by side (see below), lowering the
@@ -52,11 +55,12 @@ its URL, so it recomputes from the URL and can be printed or saved to PDF.
 
 ## How the count works
 
-Tiles are generated on an axis-aligned grid in a frame rotated around the
-origin. Each candidate tile square is intersected with the room polygon using
-Sutherland–Hodgman clipping (valid for concave rooms because the clip window —
-the tile — is convex). A tile counts if any of its area falls inside the room;
-it's **full** when the whole square is covered and **cut** otherwise.
+Tiles are generated on an axis-aligned grid (tile width × height, per-row
+X offset by the pattern) in a frame rotated around the origin. Each candidate
+tile rectangle is intersected with the room polygon using Sutherland–Hodgman
+clipping (valid for concave rooms because the clip window — the tile — is
+convex). A tile counts if any of its area falls inside the room; it's **full**
+when the whole rectangle is covered and **cut** otherwise.
 
 Cut pieces are then packed into as few whole tiles as possible, subject to a
 real-world constraint: a tile's factory edges must sit on the grout line and

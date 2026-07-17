@@ -14,12 +14,16 @@ const PAL = {
 function paramsToCfg() {
   const q = new URLSearchParams(location.search);
   const num = (k, d) => { const v = parseFloat(q.get(k)); return Number.isFinite(v) ? v : d; };
+  const patt = q.get("pattern");
+  const legacy = num("tileSize", 0); // older links used a single square size
   return {
     units: q.get("units") || "m",
     coords: q.get("coords") || "",
-    tileSize: num("tileSize", 0),
+    tileW: num("tileW", legacy),
+    tileH: num("tileH", legacy),
     grout: num("grout", 0),
-    rowOffset: num("pattern", 0),
+    rowOffset: patt === "seam" ? 0 : (parseFloat(patt) || 0),
+    seam: patt === "seam",
     rotationDeg: num("rotation", 0),
     originX: num("originX", 0),
     originY: num("originY", 0),
@@ -34,7 +38,7 @@ function paramsToCfg() {
   };
 }
 
-const PATTERN_NAME = { "0": "Grid (stacked)", "0.5": "Running bond ½", "0.3333333": "Third bond ⅓" };
+const PATTERN_NAME = { "0": "Grid (stacked)", "0.5": "Running bond ½", "0.3333333": "Third bond ⅓", "seam": "Running seam (plank offcut)" };
 
 function hi(dpr, cvs, wCss, hCss) {
   cvs.width = wCss * dpr; cvs.height = hCss * dpr;
@@ -92,7 +96,7 @@ function drawPlan(cvs, layout, polygons, origin, unit) {
 
   ctx.lineJoin = "round"; ctx.lineWidth = 2; ctx.strokeStyle = PAL.ink; pathP(); ctx.stroke();
 
-  const px = scale * layout.tileSize;
+  const px = scale * Math.min(layout.tileW, layout.tileH);
   if (px >= 16) {
     ctx.font = `600 ${Math.min(12, px * 0.26)}px ${PAL.mono}`;
     ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "rgba(35,32,27,.6)";
@@ -113,11 +117,13 @@ function drawStock(cvs, stock, unit) {
   const size = 168, pad = 12;
   const ctx = hi(dpr, cvs, size, size);
   ctx.clearRect(0, 0, size, size);
-  const ts = stock.tileSize, scale = (size - pad * 2) / ts;
-  const cx = tx => pad + tx * scale, cy = ty => size - pad - ty * scale;
+  const TW = stock.tileW, TH = stock.tileH;
+  const scale = Math.min((size - pad * 2) / TW, (size - pad * 2) / TH);
+  const offX = (size - TW * scale) / 2, offY = (size - TH * scale) / 2;
+  const cx = tx => offX + tx * scale, cy = ty => size - offY - ty * scale;
 
   ctx.fillStyle = PAL.full; ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.rect(cx(0), cy(ts), ts * scale, ts * scale); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.rect(cx(0), cy(TH), TW * scale, TH * scale); ctx.fill(); ctx.stroke();
 
   for (const piece of stock.pieces) {
     const pl = piece.place;
@@ -146,10 +152,10 @@ function render() {
 
   let polygons, layout;
   try {
-    if (!(cfg.tileSize > 0)) throw new Error("Missing or invalid tile size.");
+    if (!(cfg.tileW > 0) || !(cfg.tileH > 0)) throw new Error("Missing or invalid tile size.");
     polygons = parseRooms(cfg.coords);
     layout = computeLayout({ ...cfg, polygons });
-    const { stocks } = packCuts(layout.tiles, cfg.tileSize, cfg.kerf, cfg.reuse);
+    const { stocks } = packCuts(layout.tiles, cfg.tileW, cfg.tileH, cfg.kerf, cfg.reuse);
     layout.stocks = stocks; layout.cutStock = stocks.length; layout.total = layout.full + stocks.length;
   } catch (e) {
     report.innerHTML = `<p class="err">Can't build the cut sheet: ${esc(e.message || e)}</p>`;
@@ -168,9 +174,9 @@ function render() {
 
   const specsHTML = [
     spec("Units", u),
-    spec("Tile size", `${fmtLen(cfg.tileSize, u)} sq`),
+    spec("Tile size", `${fmtLen(cfg.tileW, u)} × ${fmtLen(cfg.tileH, u)}`),
     spec("Grout / joint", fmtLen(cfg.grout, u)),
-    spec("Pattern", PATTERN_NAME[String(cfg.rowOffset)] || `offset ${cfg.rowOffset}`),
+    spec("Pattern", PATTERN_NAME[cfg.seam ? "seam" : String(cfg.rowOffset)] || `offset ${cfg.rowOffset}`),
     spec("Rotation", `${cfg.rotationDeg}°`),
     spec("Origin", `${cfg.originX}, ${cfg.originY} (${cfg.align})`),
     spec("Saw kerf", fmtLen(cfg.kerf, u)),

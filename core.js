@@ -114,13 +114,15 @@ const MAX_TILES = 250000; // safety cap against absurd tile/room ratios
 // Compute the tile layout. All maths happen in "grid space" — the world
 // rotated by -rotation around the origin, so tiles are axis-aligned there.
 function computeLayout(cfg) {
-  const { polygons, tileSize, grout, rotationDeg, originX, originY, align, rowOffset } = cfg;
+  const { polygons, grout, rotationDeg, originX, originY, align, rowOffset, seam } = cfg;
+  // Rectangular tiles / planks: separate width (X) and height (Y).
+  const tileW = cfg.tileW, tileH = cfg.tileH;
   // Flag cut pieces more elongated than this (long side / short side). Applies
   // to strips and corner pieces alike, so no piece has a too-thin side.
   const maxAspect = cfg.maxAspect > 1 ? cfg.maxAspect : 0;
 
-  const pitch = tileSize + grout;
-  if (pitch <= 0) throw new Error("Tile size must be positive.");
+  const pitchX = tileW + grout, pitchY = tileH + grout;
+  if (pitchX <= 0 || pitchY <= 0) throw new Error("Tile size must be positive.");
 
   const theta = (-rotationDeg * Math.PI) / 180; // world -> grid
   const cos = Math.cos(theta), sin = Math.sin(theta);
@@ -138,14 +140,15 @@ function computeLayout(cfg) {
   );
 
   // Base offset so a tile edge (corner mode) or centre (center mode) lands on origin.
-  const base = align === "center" ? tileSize / 2 : 0;
-  const x0 = originX - base; // grid-space x of tile column 0's left edge
-  const y0 = originY - base;
+  const baseX = align === "center" ? tileW / 2 : 0;
+  const baseY = align === "center" ? tileH / 2 : 0;
+  const x0 = originX - baseX; // grid-space x of tile column 0's left edge
+  const y0 = originY - baseY;
 
-  const iStart = Math.floor((minX - x0) / pitch) - 1;
-  const iEnd   = Math.ceil((maxX - x0) / pitch) + 1;
-  const jStart = Math.floor((minY - y0) / pitch) - 1;
-  const jEnd   = Math.ceil((maxY - y0) / pitch) + 1;
+  const iStart = Math.floor((minX - x0) / pitchX) - 1;
+  const iEnd   = Math.ceil((maxX - x0) / pitchX) + 1;
+  const jStart = Math.floor((minY - y0) / pitchY) - 1;
+  const jEnd   = Math.ceil((maxY - y0) / pitchY) + 1;
 
   const estimate = (iEnd - iStart + 1) * (jEnd - jStart + 1);
   if (estimate > MAX_TILES) {
@@ -153,21 +156,29 @@ function computeLayout(cfg) {
   }
 
   const frac = v => v - Math.floor(v);
-  const tileArea = tileSize * tileSize;
+  const tileArea = tileW * tileH;
   const epsArea = tileArea * EPS_RATIO;
   const fullArea = tileArea * (1 - 1e-6);
+
+  // Running seam: each row is offset by the previous row's end-offcut. For a
+  // rectangular room that offcut is constant, so the offset steps by
+  // (−roomWidth) mod pitch each row — a continuous staggered seam.
+  const roomW = maxX - minX;
+  const seamStep = seam ? (((-roomW) % pitchX) + pitchX) % pitchX : 0;
 
   const tiles = []; // { num, corners:[world], cut, label:{x,y}, w?, h?, sliver? }
   let full = 0, cut = 0, slivers = 0;
 
   for (let j = jStart; j <= jEnd; j++) {
-    // Running/third bond: shift each row by a fraction of the pitch.
-    const shift = frac(j * rowOffset) * pitch;
-    const ty0 = y0 + j * pitch;
+    // Per-row X shift: running seam, running/third bond, or none.
+    const shift = seam
+      ? (((j * seamStep) % pitchX) + pitchX) % pitchX
+      : frac(j * rowOffset) * pitchX;
+    const ty0 = y0 + j * pitchY;
     for (let i = iStart; i <= iEnd; i++) {
-      const tx0 = x0 + i * pitch + shift;
-      const rxmin = tx0, rxmax = tx0 + tileSize;
-      const rymin = ty0, rymax = ty0 + tileSize;
+      const tx0 = x0 + i * pitchX + shift;
+      const rxmin = tx0, rxmax = tx0 + tileW;
+      const rymin = ty0, rymax = ty0 + tileH;
 
       // Sum coverage across all room polygons, tracking the clipped piece's
       // bounding box (its cut dimensions) and area-weighted centroid.
@@ -227,7 +238,7 @@ function computeLayout(cfg) {
   let area = 0;
   for (const poly of polygons) area += polygonArea(poly);
 
-  return { tiles, full, cut, slivers, area, tileSize };
+  return { tiles, full, cut, slivers, area, tileW, tileH };
 }
 
 /* ---- Offcut reuse (factory-edge-aware guillotine) ------------------------ */
@@ -244,51 +255,54 @@ function computeLayout(cfg) {
 // may only take factory edges from the region's factory sides; each cut then
 // removes those sides from the leftover regions.
 
-function packCuts(tiles, tileSize, kerf, reuse) {
-  const ts = tileSize;
-  const E = ts * 1e-4;                       // "full length" tolerance
-  const isFull = d => d >= ts - Math.max(1e-9, E);
+function packCuts(tiles, tileW, tileH, kerf, reuse) {
+  const TW = tileW, TH = tileH;
+  const EW = TW * 1e-4, EH = TH * 1e-4;      // "full length" tolerances
+  const isFullW = d => d >= TW - Math.max(1e-9, EW);
+  const isFullH = d => d >= TH - Math.max(1e-9, EH);
+  const squareTile = Math.abs(TW - TH) < Math.min(EW, EH) + 1e-9; // rotation only for squares
   const stocks = [];
   const free = []; // { stock, x, y, w, h, fL, fR, fB, fT }
 
   const openStock = (withFree) => {
-    const s = { id: stocks.length + 1, tileSize: ts, pieces: [] };
+    const s = { id: stocks.length + 1, tileW: TW, tileH: TH, pieces: [] };
     stocks.push(s);
-    if (withFree) free.push({ stock: s.id, x: 0, y: 0, w: ts, h: ts, fL: true, fR: true, fB: true, fT: true });
+    if (withFree) free.push({ stock: s.id, x: 0, y: 0, w: TW, h: TH, fL: true, fR: true, fB: true, fT: true });
     return s;
   };
 
   // Place a footprint (fw × fh) in region R; `rot` records whether the piece's
   // stored shape is turned 90°. Returns { place, leftovers, waste } or null.
   function placeFootprint(R, fw, fh, rot) {
-    const gap = 1e-9;
-    const fwFull = fw >= ts - E, fhFull = fh >= ts - E;
+    const gap = Math.max(TW, TH) * 1e-6; // fit tolerance (absorbs clip round-off)
+    const fwFull = isFullW(fw), fhFull = isFullH(fh);
+    const waste = R.w * R.h - fw * fh;
 
     // Whole tile: only a pristine full region.
     if (fwFull && fhFull) {
-      if (R.w < ts - E || R.h < ts - E || !(R.fL && R.fR && R.fB && R.fT)) return null;
-      return { place: { x: R.x, y: R.y, w: ts, h: ts, rot }, leftovers: [], waste: 0 };
+      if (R.w < TW - EW || R.h < TH - EH || !(R.fL && R.fR && R.fB && R.fT)) return null;
+      return { place: { x: R.x, y: R.y, w: TW, h: TH, rot }, leftovers: [], waste: 0 };
     }
 
     // Vertical strip: full-height band against a vertical factory side.
     if (fhFull) {
-      if (!(R.fT && R.fB) || R.h < ts - E || fw > R.w + gap) return null;
-      const leftW = R.w - fw - kerf, waste = (R.w - fw) * ts;
-      if (R.fL) return { place: { x: R.x, y: R.y, w: fw, h: ts, rot },
-        leftovers: leftW > gap ? [{ stock: R.stock, x: R.x + fw + kerf, y: R.y, w: leftW, h: ts, fL: false, fR: R.fR, fB: true, fT: true }] : [], waste };
-      if (R.fR) return { place: { x: R.x + R.w - fw, y: R.y, w: fw, h: ts, rot },
-        leftovers: leftW > gap ? [{ stock: R.stock, x: R.x, y: R.y, w: leftW, h: ts, fL: R.fL, fR: false, fB: true, fT: true }] : [], waste };
+      if (!(R.fT && R.fB) || R.h < TH - EH || fw > R.w + gap) return null;
+      const leftW = R.w - fw - kerf;
+      if (R.fL) return { place: { x: R.x, y: R.y, w: fw, h: TH, rot },
+        leftovers: leftW > gap ? [{ stock: R.stock, x: R.x + fw + kerf, y: R.y, w: leftW, h: TH, fL: false, fR: R.fR, fB: true, fT: true }] : [], waste };
+      if (R.fR) return { place: { x: R.x + R.w - fw, y: R.y, w: fw, h: TH, rot },
+        leftovers: leftW > gap ? [{ stock: R.stock, x: R.x, y: R.y, w: leftW, h: TH, fL: R.fL, fR: false, fB: true, fT: true }] : [], waste };
       return null;
     }
 
     // Horizontal strip: full-width band against a horizontal factory side.
     if (fwFull) {
-      if (!(R.fL && R.fR) || R.w < ts - E || fh > R.h + gap) return null;
-      const leftH = R.h - fh - kerf, waste = (R.h - fh) * ts;
-      if (R.fB) return { place: { x: R.x, y: R.y, w: ts, h: fh, rot },
-        leftovers: leftH > gap ? [{ stock: R.stock, x: R.x, y: R.y + fh + kerf, w: ts, h: leftH, fL: R.fL, fR: R.fR, fB: false, fT: R.fT }] : [], waste };
-      if (R.fT) return { place: { x: R.x, y: R.y + R.h - fh, w: ts, h: fh, rot },
-        leftovers: leftH > gap ? [{ stock: R.stock, x: R.x, y: R.y, w: ts, h: leftH, fL: R.fL, fR: R.fR, fB: R.fB, fT: false }] : [], waste };
+      if (!(R.fL && R.fR) || R.w < TW - EW || fh > R.h + gap) return null;
+      const leftH = R.h - fh - kerf;
+      if (R.fB) return { place: { x: R.x, y: R.y, w: TW, h: fh, rot },
+        leftovers: leftH > gap ? [{ stock: R.stock, x: R.x, y: R.y + fh + kerf, w: TW, h: leftH, fL: R.fL, fR: R.fR, fB: false, fT: R.fT }] : [], waste };
+      if (R.fT) return { place: { x: R.x, y: R.y + R.h - fh, w: TW, h: fh, rot },
+        leftovers: leftH > gap ? [{ stock: R.stock, x: R.x, y: R.y, w: TW, h: leftH, fL: R.fL, fR: R.fR, fB: R.fB, fT: false }] : [], waste };
       return null;
     }
 
@@ -296,7 +310,6 @@ function packCuts(tiles, tileSize, kerf, reuse) {
     const pw = fw, ph = fh;
     if (pw > R.w + gap || ph > R.h + gap) return null;
     const topH = R.h - ph - kerf, sideW = R.w - pw - kerf;
-    const waste = R.w * R.h - pw * ph;
     const colTop = topH > gap, rowRight = sideW > gap;
     if (R.fB && R.fL) {                                    // bottom-left
       const lo = [];
@@ -325,18 +338,15 @@ function packCuts(tiles, tileSize, kerf, reuse) {
     return null;
   }
 
-  // Try both orientations (tiles can be rotated to fit an offcut); keep the
-  // tighter fit.
+  // Try both orientations when the tile is square (a rotated piece can fill an
+  // offcut); for rectangular tiles/planks the orientation is fixed by the grid.
   function tryPlace(R, piece) {
-    let best = null;
-    for (const rot of [false, true]) {
-      const fw = rot ? piece.h : piece.w;
-      const fh = rot ? piece.w : piece.h;
-      const res = placeFootprint(R, fw, fh, rot);
-      if (res && (!best || res.waste < best.waste)) best = res;
-      if (Math.abs(piece.w - piece.h) < 1e-12) break; // square: one orientation
-    }
-    return best;
+    const a = placeFootprint(R, piece.w, piece.h, false);
+    if (!squareTile || Math.abs(piece.w - piece.h) < 1e-12) return a;
+    const b = placeFootprint(R, piece.h, piece.w, true);
+    if (!a) return b;
+    if (!b) return a;
+    return b.waste < a.waste ? b : a;
   }
 
   // Hardest pieces first (biggest area), so small offcuts fill the gaps.
@@ -345,7 +355,7 @@ function packCuts(tiles, tileSize, kerf, reuse) {
 
   for (const piece of order) {
     // A near-full tile (both sides full) can only come from a whole tile.
-    if (!reuse || (isFull(piece.w) && isFull(piece.h))) {
+    if (!reuse || (isFullW(piece.w) && isFullH(piece.h))) {
       const s = openStock(false);
       piece.stock = s.id;
       piece.place = { x: 0, y: 0, w: piece.w, h: piece.h, rot: false };
